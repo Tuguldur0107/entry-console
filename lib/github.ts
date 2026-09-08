@@ -1,0 +1,295 @@
+// GitHub REST давхарга — console-ийн ЦОРЫН ГАНЦ өгөгдлийн эх сурвалж.
+// Харилцагч = `entry-customer` topic-той repo; тохиргоо нь repo variables
+// (ENTRY_DISPLAY_NAME, ENTRY_APP_URL); статус нь workflow run-ууд.
+import { config } from "./config";
+
+const API = "https://api.github.com";
+
+export class GitHubError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+async function gh<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${config.githubToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  if (!response.ok) {
+    let message = text;
+    try {
+      message = (JSON.parse(text) as { message?: string }).message ?? text;
+    } catch {
+      /* raw text */
+    }
+    throw new GitHubError(response.status, `GitHub ${response.status}: ${message}`);
+  }
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+// ── Төрлүүд ────────────────────────────────────────────────────────────────
+
+export interface CustomerRepo {
+  slug: string;
+  fullName: string;
+  htmlUrl: string;
+  description: string | null;
+  createdAt: string;
+  pushedAt: string | null;
+  topics: string[];
+}
+
+export interface WorkflowRun {
+  id: number;
+  name: string;
+  displayTitle: string;
+  status: string;
+  conclusion: string | null;
+  htmlUrl: string;
+  createdAt: string;
+  headBranch: string;
+}
+
+export interface Collaborator {
+  login: string;
+  htmlUrl: string;
+  permission: string;
+  pending?: boolean;
+}
+
+export interface Release {
+  tagName: string;
+  htmlUrl: string;
+  publishedAt: string | null;
+}
+
+interface RawRepo {
+  name: string;
+  full_name: string;
+  html_url: string;
+  description: string | null;
+  created_at: string;
+  pushed_at: string | null;
+  topics?: string[];
+}
+
+function toRepo(raw: RawRepo): CustomerRepo {
+  return {
+    slug: raw.name.startsWith(config.repoPrefix)
+      ? raw.name.slice(config.repoPrefix.length)
+      : raw.name,
+    fullName: raw.full_name,
+    htmlUrl: raw.html_url,
+    description: raw.description,
+    createdAt: raw.created_at,
+    pushedAt: raw.pushed_at,
+    topics: raw.topics ?? [],
+  };
+}
+
+// ── Харилцагчийн repo ──────────────────────────────────────────────────────
+
+export async function listCustomerRepos(): Promise<CustomerRepo[]> {
+  const path =
+    config.ownerType === "org"
+      ? `/orgs/${config.owner}/repos?per_page=100&type=all&sort=created`
+      : `/user/repos?per_page=100&affiliation=owner&sort=created`;
+  const repos = await gh<RawRepo[]>(path);
+  return repos
+    .filter((r) => (r.topics ?? []).includes(config.customerTopic))
+    .filter((r) => r.full_name.split("/")[0].toLowerCase() === config.owner.toLowerCase())
+    .map(toRepo);
+}
+
+export async function getCustomerRepo(slug: string): Promise<CustomerRepo | null> {
+  try {
+    const raw = await gh<RawRepo>(`/repos/${config.owner}/${config.repoPrefix}${slug}`);
+    if (!(raw.topics ?? []).includes(config.customerTopic)) return null;
+    return toRepo(raw);
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function getVariable(fullName: string, name: string): Promise<string | null> {
+  try {
+    const v = await gh<{ value: string }>(`/repos/${fullName}/actions/variables/${name}`);
+    return v.value || null;
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function setVariable(fullName: string, name: string, value: string): Promise<void> {
+  try {
+    await gh(`/repos/${fullName}/actions/variables/${name}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, value }),
+    });
+  } catch (error) {
+    if (!(error instanceof GitHubError && error.status === 404)) throw error;
+    await gh(`/repos/${fullName}/actions/variables`, {
+      method: "POST",
+      body: JSON.stringify({ name, value }),
+    });
+  }
+}
+
+export async function listCollaborators(fullName: string): Promise<Collaborator[]> {
+  const [members, invites] = await Promise.all([
+    gh<{ login: string; html_url: string; role_name?: string; permissions?: Record<string, boolean> }[]>(
+      `/repos/${fullName}/collaborators?per_page=100`
+    ),
+    gh<{ invitee: { login: string; html_url: string }; permissions: string }[]>(
+      `/repos/${fullName}/invitations?per_page=100`
+    ),
+  ]);
+  return [
+    ...members.map((m) => ({
+      login: m.login,
+      htmlUrl: m.html_url,
+      permission: m.role_name ?? (m.permissions?.admin ? "admin" : m.permissions?.push ? "write" : "read"),
+    })),
+    ...invites.map((i) => ({
+      login: i.invitee.login,
+      htmlUrl: i.invitee.html_url,
+      permission: i.permissions,
+      pending: true,
+    })),
+  ];
+}
+
+export async function inviteCollaborator(
+  fullName: string,
+  username: string,
+  permission: "pull" | "push" | "admin" = "push"
+): Promise<void> {
+  await gh(`/repos/${fullName}/collaborators/${encodeURIComponent(username)}`, {
+    method: "PUT",
+    body: JSON.stringify({ permission }),
+  });
+}
+
+// ── Workflow ───────────────────────────────────────────────────────────────
+
+interface RawRun {
+  id: number;
+  name: string;
+  display_title: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string;
+  head_branch: string;
+}
+
+function toRun(r: RawRun): WorkflowRun {
+  return {
+    id: r.id,
+    name: r.name,
+    displayTitle: r.display_title,
+    status: r.status,
+    conclusion: r.conclusion,
+    htmlUrl: r.html_url,
+    createdAt: r.created_at,
+    headBranch: r.head_branch,
+  };
+}
+
+export async function listWorkflowRuns(
+  fullName: string,
+  workflowFile: string,
+  limit = 5
+): Promise<WorkflowRun[]> {
+  try {
+    const data = await gh<{ workflow_runs: RawRun[] }>(
+      `/repos/${fullName}/actions/workflows/${workflowFile}/runs?per_page=${limit}`
+    );
+    return data.workflow_runs.map(toRun);
+  } catch (error) {
+    // Workflow файл байхгүй (хуучин seed) — хоосон жагсаалт.
+    if (error instanceof GitHubError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+export async function dispatchWorkflow(
+  fullName: string,
+  workflowFile: string,
+  ref: string,
+  inputs: Record<string, string>
+): Promise<void> {
+  await gh(`/repos/${fullName}/actions/workflows/${workflowFile}/dispatches`, {
+    method: "POST",
+    body: JSON.stringify({ ref, inputs }),
+  });
+}
+
+export async function listOpenPulls(fullName: string): Promise<{ title: string; htmlUrl: string; number: number }[]> {
+  const pulls = await gh<{ title: string; html_url: string; number: number }[]>(
+    `/repos/${fullName}/pulls?state=open&per_page=20`
+  );
+  return pulls.map((p) => ({ title: p.title, htmlUrl: p.html_url, number: p.number }));
+}
+
+// ── Core ───────────────────────────────────────────────────────────────────
+
+export async function getLatestRelease(): Promise<Release | null> {
+  try {
+    const r = await gh<{ tag_name: string; html_url: string; published_at: string | null }>(
+      `/repos/${config.coreRepo}/releases/latest`
+    );
+    return { tagName: r.tag_name, htmlUrl: r.html_url, publishedAt: r.published_at };
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function getDefaultBranch(fullName: string): Promise<string> {
+  const r = await gh<{ default_branch: string }>(`/repos/${fullName}`);
+  return r.default_branch;
+}
+
+// ── Deploy-ийн health (харилцагчийн app) ───────────────────────────────────
+
+export interface Health {
+  ok: boolean;
+  version: string | null;
+  sha: string | null;
+  error?: string;
+}
+
+export async function fetchHealth(appUrl: string | null): Promise<Health | null> {
+  if (!appUrl) return null;
+  try {
+    const response = await fetch(`${appUrl.replace(/\/$/, "")}/api/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = (await response.json()) as { ok?: boolean; version?: string; sha?: string; error?: string };
+    return {
+      ok: Boolean(data.ok),
+      version: data.version ?? null,
+      sha: data.sha ?? null,
+      error: data.error,
+    };
+  } catch (error) {
+    return { ok: false, version: null, sha: null, error: error instanceof Error ? error.message : String(error) };
+  }
+}
