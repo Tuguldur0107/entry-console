@@ -50,6 +50,7 @@ export function ensureSchema(): Promise<void> {
         `alter table "customers" add column if not exists "railway_environment_id" text`,
         `alter table "customers" add column if not exists "railway_service_id" text`,
         `alter table "customers" add column if not exists "railway_postgres_service_id" text`,
+        `alter table "customers" add column if not exists "railway_repo_connected" boolean not null default false`,
         `alter table "customers" add column if not exists "deploy_error" text`,
       ])
         await db.execute(sql.raw(ddl));

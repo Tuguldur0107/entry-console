@@ -83,13 +83,16 @@ async function runChecks(): Promise<Check[]> {
   }
 
   // Railway (сонголтоор — тохируулаагүй бол deploy гараар)
-  const fixRailway = "Railway → project → Settings → Tokens → project token үүсгээд entry-console Variables: RAILWAY_PROJECT_TOKEN, RAILWAY_PROJECT_ID (+ RAILWAY_ENVIRONMENT_ID)";
+  const fixRailway = "Railway → Account settings → Tokens → account token үүсгээд entry-console Variables: RAILWAY_TOKEN + RAILWAY_PROJECT_ID (харилцагчид энэ project дотор service болно)";
+  const ghAppNote = `Railway-ийн GitHub app ${config.owner} org-д суусан байх ёстой: github.com/apps/railway-app/installations/new`;
   if (railwayResult.error)
     checks.push({ ok: false, title: "Railway (автомат deploy)", detail: railwayResult.error, fix: fixRailway });
   else if (!railwayResult.r || railwayResult.r.mode === "off")
     checks.push({ ok: null, title: "Railway (автомат deploy)", detail: "тохируулаагүй — харилцагчийн deploy-г гараар хийнэ", fix: fixRailway });
+  else if (!railwayResult.r.canConnectRepo)
+    checks.push({ ok: null, title: "Railway (project token)", detail: `${railwayResult.r.detail} · project token GitHub repo ХОЛБОЖ ЧАДАХГҮЙ — service, DB, domain үүсээд repo-г гараар холбох хэрэгтэй`, fix: `${fixRailway} · ${ghAppNote}` });
   else
-    checks.push({ ok: true, title: `Railway (${railwayResult.r.mode === "project" ? "project token" : "account token"})`, detail: `${railwayResult.r.detail} · Railway-ийн GitHub app ${config.owner} org-д хандах эрхтэй байх ёстой (Railway → Account → GitHub)` });
+    checks.push({ ok: true, title: "Railway (account token)", detail: `${railwayResult.r.detail} · ${ghAppNote}` });
   return checks;
 }
 

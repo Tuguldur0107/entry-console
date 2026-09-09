@@ -40,6 +40,8 @@ export const customers = pgTable("customers", {
   railwayEnvironmentId: text("railway_environment_id"),
   railwayServiceId: text("railway_service_id"),
   railwayPostgresServiceId: text("railway_postgres_service_id"),
+  /** GitHub repo Railway service-д холбогдсон эсэх (project token-оор холбогдохгүй) */
+  railwayRepoConnected: boolean("railway_repo_connected").notNull().default(false),
   /** Сүүлийн deploy оролдлогын алдаа (амжилттай бол null) */
   deployError: text("deploy_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

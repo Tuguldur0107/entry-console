@@ -22,6 +22,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     const next = await deployNow(customer, !!repo?.pushedAt);
     return Response.json({ ok: true, deployed: true, appUrl: next.appUrl, railwayServiceId: next.railwayServiceId }, { status: 201 });
   } catch (error) {
+    // Service/DB/domain үүссэн ч repo холбогдоогүй → 202 (хагас амжилт, id-ууд хадгалагдсан)
+    if (error instanceof DeployError && error.customer)
+      return Response.json({ ok: false, partial: true, appUrl: error.customer.appUrl, railwayServiceId: error.customer.railwayServiceId, error: error.message }, { status: 202 });
     if (error instanceof DeployError) return Response.json({ ok: false, error: error.message }, { status: 422 });
     return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

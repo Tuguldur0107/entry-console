@@ -215,19 +215,19 @@ export function StatusActions({ slug, status }: { slug: string; status: Customer
   );
 }
 
-export function DeployPanel({ slug, deployed, autoDeploy, blocker, deployError }: { slug: string; deployed: boolean; autoDeploy: boolean; blocker: string | null; deployError: string | null }) {
+export function DeployPanel({ slug, deployed, connected, autoDeploy, blocker, deployError }: { slug: string; deployed: boolean; connected: boolean; autoDeploy: boolean; blocker: string | null; deployError: string | null }) {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const run = (fn: () => Promise<ActionResult>) => () => start(async () => { const r = await fn(); setResult(r); if (r.ok) router.refresh(); });
   return (
     <div className="space-y-3">
-      {deployError && <p className="notice notice-danger"><strong>Сүүлийн оролдлого амжилтгүй.</strong> {deployError}</p>}
+      {deployError && <p className={`notice ${deployed && !connected ? "notice-warning" : "notice-danger"}`}><strong>{deployed && !connected ? "Repo холбогдоогүй." : "Сүүлийн оролдлого амжилтгүй."}</strong> {deployError}</p>}
       <div className="flex flex-wrap items-center gap-2">
-        {!deployed ? (
+        {!deployed || !connected ? (
           <button className="btn btn-primary" disabled={pending || !!blocker} title={blocker ?? undefined}
             onClick={run(() => deployCustomerToRailway(slug))}>
-            <Icons.rocket className="h-4 w-4" /> {pending ? "Үүсгэж байна…" : deployError ? "Дахин оролдох" : "Railway-д deploy"}
+            <Icons.rocket className="h-4 w-4" /> {pending ? "Үүсгэж байна…" : deployed ? "Repo холбож deploy" : deployError ? "Дахин оролдох" : "Railway-д deploy"}
           </button>
         ) : (
           <button className="btn" disabled={pending} onClick={() => { if (!confirm("Сүүлийн commit-оор дахин deploy хийх үү?")) return; run(() => redeployCustomer(slug))(); }}>
@@ -242,7 +242,7 @@ export function DeployPanel({ slug, deployed, autoDeploy, blocker, deployError }
           </label>
         )}
       </div>
-      {blocker && !deployed && <p className="hint">{blocker}</p>}
+      {blocker && (!deployed || !connected) && <p className="hint">{blocker}</p>}
       <Notice result={result} />
     </div>
   );

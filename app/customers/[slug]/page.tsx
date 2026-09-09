@@ -74,17 +74,18 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
 
           <Section
             title="Хостинг (Railway)"
-            sub={deployed ? "App + Postgres service Railway дээр · commit push хийгдэх бүрд автоматаар deploy хийгдэнэ" : railwayConfigured() ? "Нэг товчоор app + Postgres service үүсч, хаяг бүртгэгдэнэ" : "Railway тохируулаагүй — Тохиргоо хуудсыг үзнэ үү"}
+            sub={deployed && c.railwayRepoConnected ? "App + Postgres service Railway дээр · commit push хийгдэх бүрд автоматаар deploy хийгдэнэ" : deployed ? "Service, Postgres, domain бэлэн — GitHub repo холбогдсоны дараа build эхэлнэ" : railwayConfigured() ? "Нэг товчоор app + Postgres service үүсч, хаяг бүртгэгдэнэ" : "Railway тохируулаагүй — Тохиргоо хуудсыг үзнэ үү"}
             right={railwayUrl ? <a href={railwayUrl} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost"><Icons.external className="h-4 w-4" /> Railway</a> : undefined}
           >
             {deployed && (
               <dl className="mb-3 space-y-2 text-sm">
+                <Row k="Repo холболт" v={c.railwayRepoConnected ? <span className="badge badge-success">холбогдсон</span> : <span className="badge badge-warning">холбогдоогүй</span>} />
                 <Row k="Сүүлийн deployment" v={<DeployStatus status={customer.railway?.status ?? null} at={customer.railway?.createdAt ?? null} />} />
                 <Row k="Хаяг" v={c.appUrl ? <a href={c.appUrl} target="_blank" rel="noreferrer" className="hover:underline">{c.appUrl.replace(/^https?:\/\//, "")}</a> : "—"} />
                 <Row k="Service" v={<span className="mono">entry-{c.slug} · entry-{c.slug}-db</span>} />
               </dl>
             )}
-            <DeployPanel slug={slug} deployed={deployed} autoDeploy={c.autoDeploy} blocker={deployed ? null : deployBlocker(c, !!repo?.pushedAt)} deployError={c.deployError} />
+            <DeployPanel slug={slug} deployed={deployed} connected={c.railwayRepoConnected} autoDeploy={c.autoDeploy} blocker={deployed && c.railwayRepoConnected ? null : deployBlocker(c, !!repo?.pushedAt)} deployError={c.deployError} />
           </Section>
 
           <Section title="Core шинэчлэлт" sub={`Харилцагчийн repo дээр upstream-sync.yml ажиллаж PR нээнэ · core ${latest?.tagName ?? "—"}`}>

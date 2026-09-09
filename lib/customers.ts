@@ -20,7 +20,7 @@ import {
   type WorkflowRun,
 } from "./github";
 import { deployNow } from "./deploy";
-import { latestDeployment, railwayConfigured, type RailwayStatus } from "./railway";
+import { latestDeployment, railwayCanConnectRepo, railwayConfigured, type RailwayStatus } from "./railway";
 
 export interface CustomerSummary {
   customer: Customer;
@@ -77,8 +77,9 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
         .returning();
       await logEvent(row.id, "activated", `Repo үүслээ: ${repo.fullName}`);
       updated.push(await maybeAutoDeploy(next));
-    } else if (repo?.pushedAt && row.autoDeploy && !row.railwayServiceId && !row.deployError) {
-      // Идэвхтэй болсон ч deploy хийгдээгүй (өмнөх оролдлого Railway тохируулаагүй үед байсан г.м.)
+    } else if (repo?.pushedAt && row.autoDeploy && (!row.railwayServiceId ? !row.deployError : !row.railwayRepoConnected && railwayCanConnectRepo())) {
+      // Идэвхтэй болсон ч deploy хийгдээгүй (Railway хожим тохируулагдсан), эсвэл service бэлэн
+      // боловч repo холбогдоогүй байтал account token нэмэгдсэн → холбоно
       updated.push(await maybeAutoDeploy(row));
     } else updated.push(row);
   }
@@ -105,7 +106,7 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
 
 /** autoDeploy + Railway тохируулсан + deploy хийгдээгүй бол deploy; алдааг залгина (deployError-д). */
 async function maybeAutoDeploy(row: Customer): Promise<Customer> {
-  if (!row.autoDeploy || row.railwayServiceId || !railwayConfigured()) return row;
+  if (!row.autoDeploy || !railwayConfigured() || (row.railwayServiceId && row.railwayRepoConnected)) return row;
   try {
     return await deployNow(row, true);
   } catch {
@@ -235,7 +236,9 @@ export function computeAttention(
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Хувилбар v${health?.version} — core ${latest?.tagName}. Sync хийх` });
     if (lastSync && lastSync.status === "completed" && lastSync.conclusion !== "success")
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Сүүлийн upstream-sync амжилтгүй" });
-    if (c.deployError)
+    if (c.railwayServiceId && !c.railwayRepoConnected)
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Railway service бэлэн, GitHub repo холбогдоогүй — build эхлээгүй" });
+    else if (c.deployError)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Railway deploy амжилтгүй: ${c.deployError.slice(0, 120)}` });
     if (c.status === "active" && !c.appUrl)
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: c.railwayServiceId ? "Deploy хаяг алга" : "Deploy хийгдээгүй — харилцагчийн хуудаснаас «Railway-д deploy» дарна" });

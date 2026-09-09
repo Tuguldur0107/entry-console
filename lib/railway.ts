@@ -9,17 +9,21 @@ const API = "https://backboard.railway.com/graphql/v2";
 export class RailwayError extends Error {}
 
 /**
- * Хоёр горим:
- *  - project:  RAILWAY_PROJECT_TOKEN + RAILWAY_PROJECT_ID (+ RAILWAY_ENVIRONMENT_ID) —
- *              харилцагч бүр НЭГ project дотор тусдаа service хос (app + Postgres).
- *              Project token хангалттай (Railway project → Settings → Tokens).
- *  - account:  RAILWAY_TOKEN (Account/Team token) — харилцагч бүрд тусдаа project.
+ * Нэвтрэлт (аль нэг нь):
+ *  - RAILWAY_TOKEN — Account/Team token (Railway → Account settings → Tokens). GitHub repo
+ *    холбох (serviceConnect) ЗӨВХӨН энэ token-оор болно — project token GitHub контекстгүй.
+ *  - RAILWAY_PROJECT_TOKEN — project token: service/volume/variable/domain үүсгэнэ, repo
+ *    холбож чадахгүй → service бэлэн болоод «repo холбоогүй» төлөвтэй үлдэнэ (Railway дээр
+ *    гараар холбох эсвэл RAILWAY_TOKEN нэмээд дахин оролдох).
+ * Байршил:
+ *  - RAILWAY_PROJECT_ID өгвөл харилцагч бүр ТЭР project дотор entry-<slug> + entry-<slug>-db
+ *  - өгөхгүй бол (account token шаардана) харилцагч бүрд тусдаа project
  */
-export type RailwayMode = "project" | "account" | "off";
+export type RailwayMode = "account" | "project" | "off";
 
 export function railwayMode(): RailwayMode {
-  if (process.env.RAILWAY_PROJECT_TOKEN && process.env.RAILWAY_PROJECT_ID) return "project";
   if (process.env.RAILWAY_TOKEN) return "account";
+  if (process.env.RAILWAY_PROJECT_TOKEN && process.env.RAILWAY_PROJECT_ID) return "project";
   return "off";
 }
 
@@ -27,14 +31,19 @@ export function railwayConfigured(): boolean {
   return railwayMode() !== "off";
 }
 
+/** Repo холбох боломжтой эсэх — account token л GitHub контексттэй. */
+export function railwayCanConnectRepo(): boolean {
+  return railwayMode() === "account";
+}
+
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const mode = railwayMode();
   if (mode === "off")
-    throw new RailwayError("Railway тохируулаагүй — RAILWAY_PROJECT_TOKEN + RAILWAY_PROJECT_ID эсвэл RAILWAY_TOKEN");
+    throw new RailwayError("Railway тохируулаагүй — RAILWAY_TOKEN эсвэл RAILWAY_PROJECT_TOKEN + RAILWAY_PROJECT_ID");
   const auth: Record<string, string> =
-    mode === "project"
-      ? { "Project-Access-Token": process.env.RAILWAY_PROJECT_TOKEN! }
-      : { Authorization: `Bearer ${process.env.RAILWAY_TOKEN}` };
+    mode === "account"
+      ? { Authorization: `Bearer ${process.env.RAILWAY_TOKEN}` }
+      : { "Project-Access-Token": process.env.RAILWAY_PROJECT_TOKEN! };
   const response = await fetch(API, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/json" },
@@ -49,33 +58,47 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 
 // ── Шалгалт ────────────────────────────────────────────────────────────────
 
-export async function railwayCheck(): Promise<{ mode: RailwayMode; detail: string }> {
+export async function railwayCheck(): Promise<{ mode: RailwayMode; detail: string; canConnectRepo: boolean }> {
   const mode = railwayMode();
-  if (mode === "off") return { mode, detail: "тохируулаагүй" };
-  if (mode === "project") {
-    const d = await gql<{ projectToken: { projectId: string; environmentId: string } }>(`{ projectToken { projectId environmentId } }`);
+  if (mode === "off") return { mode, detail: "тохируулаагүй", canConnectRepo: false };
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  let who = "";
+  if (mode === "account") {
+    const d = await gql<{ me: { email: string } }>(`{ me { email } }`);
+    who = `${d.me.email} (account token)`;
+  } else {
+    const d = await gql<{ projectToken: { projectId: string } }>(`{ projectToken { projectId } }`);
+    who = "project token";
+    if (d.projectToken.projectId !== projectId) throw new RailwayError("RAILWAY_PROJECT_ID token-ийн project-той таарахгүй");
+  }
+  if (projectId) {
     const p = await gql<{ project: { name: string; services: { edges: { node: { name: string } }[] } } }>(
       `query($id: String!) { project(id: $id) { name services { edges { node { name } } } } }`,
-      { id: d.projectToken.projectId }
+      { id: projectId }
     );
-    return { mode, detail: `project «${p.project.name}» (${p.project.services.edges.length} service) — харилцагч бүр энэ project дотор service хос болно` };
+    return { mode, canConnectRepo: mode === "account", detail: `${who} · project «${p.project.name}» (${p.project.services.edges.length} service) — харилцагч бүр энэ project дотор service хос` };
   }
-  const d = await gql<{ me: { name: string; email: string; workspaces: { id: string; name: string }[] } }>(`{ me { name email workspaces { id name } } }`);
-  return { mode, detail: `${d.me.email} · workspace: ${d.me.workspaces.map((w) => w.name).join(", ")} — харилцагч бүрд тусдаа project` };
+  return { mode, canConnectRepo: true, detail: `${who} — харилцагч бүрд тусдаа project` };
 }
 
 /** Project горимд token-ийн project/environment; account горимд шинэ project үүсгэнэ. */
 async function resolveProject(slug: string, displayName: string, log: DeployLog): Promise<{ projectId: string; environmentId: string; prefix: string }> {
-  if (railwayMode() === "project") {
-    const projectId = process.env.RAILWAY_PROJECT_ID!;
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  if (projectId) {
     let environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
     if (!environmentId) {
-      const d = await gql<{ projectToken: { environmentId: string } }>(`{ projectToken { environmentId } }`);
-      environmentId = d.projectToken.environmentId;
+      const d = await gql<{ project: { environments: { edges: { node: { id: string; name: string } }[] } } }>(
+        `query($id: String!) { project(id: $id) { environments { edges { node { id name } } } } }`,
+        { id: projectId }
+      );
+      const envs = d.project.environments.edges.map((e) => e.node);
+      environmentId = (envs.find((e) => e.name === "production") ?? envs[0])?.id;
+      if (!environmentId) throw new RailwayError("Project-д environment олдсонгүй");
     }
     // Нэг project дотор олон харилцагч → service нэр угтвартай
     return { projectId, environmentId, prefix: `entry-${slug}` };
   }
+  if (railwayMode() !== "account") throw new RailwayError("RAILWAY_PROJECT_ID алга — шинэ project үүсгэхэд account token (RAILWAY_TOKEN) хэрэгтэй");
   log("Railway project үүсгэж байна");
   const workspaceId = process.env.RAILWAY_WORKSPACE_ID || undefined;
   const created = await gql<{ projectCreate: { id: string; environments: { edges: { node: { id: string; name: string } }[] } } }>(
@@ -138,6 +161,19 @@ export interface RailwayDeployment {
   postgresServiceId: string;
   appServiceId: string;
   domain: string;
+  /** GitHub repo холбогдож build эхэлсэн эсэх — үгүй бол connectError-д шалтгаан */
+  connected: boolean;
+  connectError: string | null;
+}
+
+/** Service-д GitHub repo холбоно (build тэр дороо эхэлнэ). Account token шаардана. */
+export async function connectRepo(serviceId: string, repo: string, branch = "main"): Promise<void> {
+  if (!railwayCanConnectRepo())
+    throw new RailwayError("Project token GitHub repo холбож чадахгүй — entry-console-д RAILWAY_TOKEN (account token) нэм, эсвэл Railway → service → Settings → Source-оос гараар холбо");
+  await gql(
+    `mutation($id: String!, $input: ServiceConnectInput!) { serviceConnect(id: $id, input: $input) { id } }`,
+    { id: serviceId, input: { repo, branch } }
+  );
 }
 
 export interface DeployLog {
@@ -257,18 +293,24 @@ export async function deployCustomer(input: {
     // preDeployCommand талбар дэмжигдэхгүй бол railway.toml-оос уншигдана
   }
 
+  let connected = false;
+  let connectError: string | null = null;
   if (appExisting?.connected) {
     log("Repo аль хэдийн холбогдсон — дахин deploy");
     await redeployService(appServiceId, environmentId);
+    connected = true;
   } else {
     log("GitHub repo холбож deploy эхлүүлж байна");
-    await gql(
-      `mutation($id: String!, $input: ServiceConnectInput!) { serviceConnect(id: $id, input: $input) { id } }`,
-      { id: appServiceId, input: { repo: input.githubRepo, branch } }
-    );
+    try {
+      await connectRepo(appServiceId, input.githubRepo, branch);
+      connected = true;
+    } catch (error) {
+      // Service, DB, domain, variables бүгд бэлэн — зөвхөн repo холболт дутуу.
+      connectError = error instanceof Error ? error.message : String(error);
+    }
   }
 
-  return { projectId, environmentId, postgresServiceId, appServiceId, domain };
+  return { projectId, environmentId, postgresServiceId, appServiceId, domain, connected, connectError };
 }
 
 export interface RailwayStatus {
