@@ -1,11 +1,29 @@
+// Postgres холболт — LAZY: анхны query дээр л үүснэ. Next.js build (page
+// data collection) болон DATABASE_URL-гүй орчинд import хийхэд унахгүй.
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL)
-  throw new Error("DATABASE_URL орчны хувьсагч тохируулаагүй (Railway: Entry console DB-ийн DATABASE_URL-ийг reference хийнэ)");
+type Db = ReturnType<typeof drizzle<typeof schema>>;
 
-const client = postgres(process.env.DATABASE_URL, { max: 5, idle_timeout: 20 });
+let cached: Db | null = null;
 
-export const db = drizzle(client, { schema });
+function connect(): Db {
+  if (cached) return cached;
+  const url = process.env.DATABASE_URL;
+  if (!url)
+    throw new Error(
+      "DATABASE_URL орчны хувьсагч тохируулаагүй (Railway: Entry console DB-ийн DATABASE_URL-ийг reference хийнэ)"
+    );
+  cached = drizzle(postgres(url, { max: 5, idle_timeout: 20 }), { schema });
+  return cached;
+}
+
+export const db: Db = new Proxy({} as Db, {
+  get(_target, prop) {
+    const real = connect();
+    const value = Reflect.get(real, prop);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
