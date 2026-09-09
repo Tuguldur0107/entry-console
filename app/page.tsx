@@ -2,14 +2,13 @@ import Link from "next/link";
 
 import { SyncAllButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
-import { EmptyState, HealthBadge, Kpi, PageHeader, RunBadge, Section, StatusBadge, fmtAgo, fmtMnt } from "@/components/ui";
+import { EVENT_LABELS, EmptyState, HealthBadge, Kpi, PageHeader, RunBadge, Section, StatusBadge, fmtAgo, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 
-const EVENT_LABELS: Record<string, string> = { provisioned: "Үүсгэлт", activated: "Идэвхжсэн", sync: "Sync", invite: "Урилга", status: "Төлөв", note: "Тэмдэглэл", billing: "Төлбөр" };
 
 export default async function DashboardPage() {
   await requireSession();
@@ -19,7 +18,7 @@ export default async function DashboardPage() {
   const behindCount = visible.filter((c) => c.behind).length;
   const downCount = visible.filter((c) => c.health && !c.health.ok).length;
   const mrr = active.reduce((s, c) => s + Number(c.customer.monthlyFee), 0);
-  const attention = computeAttention(visible, latest);
+  const attention = computeAttention(visible, latest, githubErrors.length === 0);
 
   return (
     <div className="space-y-5">

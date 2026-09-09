@@ -195,10 +195,14 @@ export interface AttentionItem {
   detail: string;
 }
 
-export function computeAttention(items: CustomerSummary[], latest: Release | null): AttentionItem[] {
+export function computeAttention(
+  items: CustomerSummary[],
+  latest: Release | null,
+  repoListOk = true
+): AttentionItem[] {
   const out: AttentionItem[] = [];
   for (const { customer: c, repo, health, behind, lastSync } of items) {
-    if (c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
+    if (repoListOk && c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo 10+ минут үүсээгүй — core-ийн PROVISION_TOKEN, workflow run-ыг шалга" });
     if (health && !health.ok)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Deploy хүрэхгүй: ${health.error ?? "unknown"}` });

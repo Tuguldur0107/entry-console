@@ -3,13 +3,12 @@ import { notFound } from "next/navigation";
 
 import { CopyButton, CustomerEditForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
-import { HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
+import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 
-const EVENT_LABELS: Record<string, string> = { provisioned: "Үүсгэлт", activated: "Идэвхжсэн", sync: "Sync", invite: "Урилга", status: "Төлөв", note: "Тэмдэглэл", billing: "Төлбөр" };
 
 export default async function CustomerPage({ params }: { params: Promise<{ slug: string }> }) {
   await requireSession();

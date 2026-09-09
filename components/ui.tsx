@@ -10,6 +10,15 @@ export const STATUS_LABELS: Record<CustomerStatus, string> = {
   suspended: "Түр зогссон",
   archived: "Архив",
 };
+export const EVENT_LABELS: Record<string, string> = {
+  provisioned: "Үүсгэлт",
+  activated: "Идэвхжсэн",
+  sync: "Sync",
+  invite: "Урилга",
+  status: "Төлөв",
+  note: "Тэмдэглэл",
+  billing: "Төлбөр",
+};
 const STATUS_TONE: Record<CustomerStatus, string> = {
   provisioning: "badge-warning",
   active: "badge-success",

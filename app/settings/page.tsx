@@ -1,71 +1,84 @@
+import { sql } from "drizzle-orm";
+
 import { PageHeader, Section } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/ensure";
 import { checkOwnerAccess, coreWorkflowExists, getCoreActionsConfig, getLatestRelease, getTokenInfo } from "@/lib/github";
-import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Тохиргоо, шалгалт" };
 
 type Check = { ok: boolean | null; title: string; detail: string; fix?: string };
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-async function runChecks(): Promise<Check[]> {
-  const checks: Check[] = [];
-
-  // DB
+async function dbCheck(): Promise<Check> {
   try {
     await ensureSchema();
     await db.execute(sql`select 1`);
-    checks.push({ ok: true, title: "Postgres холболт", detail: "DATABASE_URL зөв, customers/customer_events хүснэгт бэлэн" });
+    return { ok: true, title: "Postgres холболт", detail: "DATABASE_URL зөв, customers/customer_events хүснэгт бэлэн" };
   } catch (e) {
-    checks.push({ ok: false, title: "Postgres холболт", detail: e instanceof Error ? e.message : String(e), fix: "Railway → entry-console → Variables → DATABASE_URL = ${{Entry console DB.DATABASE_URL}}" });
+    return { ok: false, title: "Postgres холболт", detail: msg(e), fix: "Railway → entry-console → Variables → DATABASE_URL = ${{Entry console DB.DATABASE_URL}}" };
   }
+}
+
+async function runChecks(): Promise<Check[]> {
+  const need = config.ownerType === "org" ? ["repo", "workflow", "admin:org"] : ["repo", "workflow"];
+  const fixToken = "GitHub → Settings → Developer settings → Tokens (classic) → token дээр дарж scope чагтлаад Update token";
+
+  const [dbResult, tokenResult, releaseResult, workflowResult, coreConfig] = await Promise.all([
+    dbCheck(),
+    getTokenInfo().then((t) => ({ t, error: null as string | null })).catch((e) => ({ t: null, error: msg(e) })),
+    getLatestRelease().then((rel) => ({ rel, error: null as string | null })).catch((e) => ({ rel: null, error: msg(e) })),
+    coreWorkflowExists("provision-customer.yml").then((exists) => ({ exists, error: null as string | null })).catch((e) => ({ exists: false, error: msg(e) })),
+    getCoreActionsConfig(),
+  ]);
+
+  const checks: Check[] = [dbResult];
 
   // Token
-  let login = "";
-  try {
-    const t = await getTokenInfo();
-    login = t.login;
-    const need = ["repo", "workflow", "admin:org"];
-    const missing = t.tokenType === "classic" ? need.filter((s) => !t.scopes.includes(s)) : [];
-    if (t.tokenType === "fine-grained")
-      checks.push({ ok: null, title: "GitHub token", detail: `@${t.login} · fine-grained token — org болон Secrets-д хандах эрх ихэвчлэн дутдаг`, fix: "Tokens (classic): repo, workflow, admin:org scope-той token ашигла" });
-    else if (missing.length > 0)
-      checks.push({ ok: false, title: "GitHub token", detail: `@${t.login} · classic · scope дутуу: ${missing.join(", ")}` + (t.scopes.length ? ` (байгаа: ${t.scopes.join(", ")})` : " (scope огт сонгоогүй)"), fix: "GitHub → Settings → Developer settings → Tokens (classic) → token дээр дарж scope чагтлаад Update token" });
-    else checks.push({ ok: true, title: "GitHub token", detail: `@${t.login} · classic · ${t.scopes.join(", ")}` });
-  } catch (e) {
-    checks.push({ ok: false, title: "GitHub token", detail: e instanceof Error ? e.message : String(e), fix: "Railway → entry-console → Variables → GITHUB_TOKEN" });
-  }
-
-  // Owner access
-  const owner = await checkOwnerAccess();
-  checks.push({ ok: owner.ok, title: `Repo эзэн: ${config.owner} (${config.ownerType})`, detail: owner.detail, fix: owner.ok ? undefined : "Token org-д admin эрхтэй байх ёстой (classic: admin:org) эсвэл GITHUB_OWNER/GITHUB_OWNER_TYPE-ийг шалга" });
-
-  // Core repo
-  try {
-    const rel = await getLatestRelease();
-    checks.push({ ok: !!rel, title: `Core repo: ${config.coreRepo}`, detail: rel ? `сүүлийн release ${rel.tagName}` : "release алга — git tag vX.Y.Z push хийнэ", fix: rel ? undefined : "git tag v1.0.0 && git push origin v1.0.0" });
-  } catch (e) {
-    checks.push({ ok: false, title: `Core repo: ${config.coreRepo}`, detail: e instanceof Error ? e.message : String(e) });
-  }
-  const wf = await coreWorkflowExists("provision-customer.yml");
-  checks.push({ ok: wf, title: "provision-customer.yml workflow", detail: wf ? "core repo-д бий" : "олдсонгүй — core main-д merge хийгдсэн эсэхийг шалга" });
-
-  const core = await getCoreActionsConfig();
-  if (core.error) {
-    checks.push({ ok: false, title: "Core Secrets / Variables", detail: core.error, fix: "Token-д repo scope хэрэгтэй (secrets унших)" });
+  const t = tokenResult.t;
+  if (!t) {
+    checks.push({ ok: false, title: "GitHub token", detail: tokenResult.error ?? "token хүчингүй", fix: "Railway → entry-console → Variables → GITHUB_TOKEN" });
+  } else if (t.tokenType === "fine-grained") {
+    checks.push({ ok: null, title: "GitHub token", detail: `@${t.login} · fine-grained — org болон Secrets-д хандах эрх ихэвчлэн дутдаг`, fix: `Tokens (classic): ${need.join(", ")} scope-той token ашигла` });
   } else {
-    const hasProv = core.secrets.includes("PROVISION_TOKEN");
-    checks.push({ ok: hasProv, title: "Secret PROVISION_TOKEN (core)", detail: hasProv ? "тавигдсан" : "байхгүй — workflow repo үүсгэж чадахгүй", fix: hasProv ? undefined : "entry-accounting → Settings → Secrets and variables → Actions → New secret: PROVISION_TOKEN = GitHub token" });
-    const hasRead = core.secrets.includes("UPSTREAM_READ_TOKEN");
-    checks.push({ ok: hasRead ? true : null, title: "Secret UPSTREAM_READ_TOKEN (core)", detail: hasRead ? "тавигдсан" : "байхгүй — core public бол хэрэггүй; private болговол заавал" });
-    const co = core.variables.CUSTOMER_OWNER;
-    const ownerOk = (co ?? "").toLowerCase() === config.owner.toLowerCase() || (!co && config.ownerType === "user");
-    checks.push({ ok: ownerOk, title: "Variable CUSTOMER_OWNER (core)", detail: co ? `= ${co}` : "тавиагүй → repo core repo-ийн эзэн дээр үүснэ", fix: ownerOk ? undefined : `entry-accounting → Settings → Secrets and variables → Actions → Variables → CUSTOMER_OWNER = ${config.owner}` });
+    // classic (ghp_) болон бусад (gho_/ghs_/40-hex) — x-oauth-scopes header-ээр шүүнэ
+    const missing = need.filter((s) => !t.scopes.includes(s));
+    if (t.tokenType === "unknown" && t.scopes.length === 0)
+      checks.push({ ok: null, title: "GitHub token", detail: `@${t.login} · төрөл тодорхойгүй, scope мэдээлэл алга`, fix: fixToken });
+    else if (missing.length > 0)
+      checks.push({ ok: false, title: "GitHub token", detail: `@${t.login} · scope дутуу: ${missing.join(", ")}` + (t.scopes.length ? ` (байгаа: ${t.scopes.join(", ")})` : " (scope огт сонгоогүй)"), fix: fixToken });
+    else checks.push({ ok: true, title: "GitHub token", detail: `@${t.login} · ${t.scopes.join(", ")}` });
   }
-  void login;
+
+  // Owner
+  if (t) {
+    const owner = await checkOwnerAccess(t.login);
+    checks.push({ ok: owner.ok, title: `Repo эзэн: ${config.owner} (${config.ownerType})`, detail: owner.detail, fix: owner.ok ? undefined : config.ownerType === "org" ? "Token org-д admin эрхтэй байх ёстой (classic: admin:org)" : "GITHUB_OWNER-ийг token-ийн эзэнтэй тааруул эсвэл GITHUB_OWNER_TYPE=org болго" });
+  }
+
+  // Core
+  checks.push(releaseResult.error
+    ? { ok: false, title: `Core repo: ${config.coreRepo}`, detail: releaseResult.error }
+    : { ok: !!releaseResult.rel, title: `Core repo: ${config.coreRepo}`, detail: releaseResult.rel ? `сүүлийн release ${releaseResult.rel.tagName}` : "release алга", fix: releaseResult.rel ? undefined : "git tag v1.0.0 && git push origin v1.0.0" });
+  checks.push(workflowResult.error
+    ? { ok: false, title: "provision-customer.yml workflow", detail: workflowResult.error, fix: "Token core repo-д хандах эрхтэй эсэхийг шалга" }
+    : { ok: workflowResult.exists, title: "provision-customer.yml workflow", detail: workflowResult.exists ? "core repo-д бий" : "олдсонгүй — core main-д merge хийгдсэн эсэхийг шалга" });
+
+  if (coreConfig.error) {
+    checks.push({ ok: false, title: "Core Secrets / Variables", detail: coreConfig.error, fix: "Token-д repo scope хэрэгтэй (secrets унших)" });
+  } else {
+    const hasProv = coreConfig.secrets.includes("PROVISION_TOKEN");
+    checks.push({ ok: hasProv, title: "Secret PROVISION_TOKEN (core)", detail: hasProv ? "тавигдсан" : "байхгүй — workflow repo үүсгэж чадахгүй", fix: hasProv ? undefined : "entry-accounting → Settings → Secrets and variables → Actions → New secret: PROVISION_TOKEN = GitHub token" });
+    const hasRead = coreConfig.secrets.includes("UPSTREAM_READ_TOKEN");
+    checks.push({ ok: hasRead ? true : null, title: "Secret UPSTREAM_READ_TOKEN (core)", detail: hasRead ? "тавигдсан" : "байхгүй — core public бол хэрэггүй; private болговол заавал" });
+    // Workflow-ийн default = core repo-ийн эзэн (github.repository_owner)
+    const effectiveOwner = coreConfig.variables.CUSTOMER_OWNER || config.coreRepo.split("/")[0];
+    const ownerOk = effectiveOwner.toLowerCase() === config.owner.toLowerCase();
+    checks.push({ ok: ownerOk, title: "Variable CUSTOMER_OWNER (core)", detail: coreConfig.variables.CUSTOMER_OWNER ? `= ${coreConfig.variables.CUSTOMER_OWNER}` : `тавиагүй → workflow ${effectiveOwner} дээр repo үүсгэнэ`, fix: ownerOk ? undefined : `entry-accounting → Settings → Secrets and variables → Actions → Variables → CUSTOMER_OWNER = ${config.owner}` });
+  }
   return checks;
 }
 
@@ -102,7 +115,7 @@ export default async function SettingsPage() {
           <li>«Харилцагч нэмэх» → бүртгэл DB-д, core repo-ийн <span className="mono">provision-customer.yml</span> dispatch.</li>
           <li>Workflow: <span className="mono">{config.owner}/entry-&lt;код&gt;</span> repo, core түүх push, Actions permission, secret, урилга.</li>
           <li>Самбар repo-г олмогц харилцагч «Идэвхтэй» болно; Deploy хаяг өгвөл хувилбар хянагдана.</li>
-          <li>Core-д шинэ release гарахад «Бүгдийг vX.Y.Z болгох» → харилцагч бүрд upstream-sync PR.</li>
+          <li>Core-д шинэ release гарахад «Бүгдийг vX.Y.Z болгох» → хоцорсон харилцагч бүрд upstream-sync PR.</li>
         </ol>
       </Section>
     </div>

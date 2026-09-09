@@ -17,6 +17,7 @@ import {
 } from "./db/schema";
 import {
   dispatchWorkflow,
+  fetchHealth,
   getCustomerRepo,
   getDefaultBranch,
   getLatestRelease,
@@ -227,12 +228,26 @@ export async function addNote(
 /** Бүх идэвхтэй харилцагчид core-ийн сүүлийн release-ийг sync хийх PR нээнэ. */
 export async function syncAllCustomers(): Promise<ActionResult> {
   await requireSession();
-  const target = (await getLatestRelease())?.tagName;
-  if (!target) return { ok: false, error: "Core-д release алга" };
-  const rows = await db.select().from(customers).where(eq(customers.status, "active"));
+  let target: string | undefined;
+  let rows: (typeof customers.$inferSelect)[];
+  try {
+    target = (await getLatestRelease())?.tagName;
+    if (!target) return { ok: false, error: "Core-д release алга" };
+    rows = await db.select().from(customers).where(eq(customers.status, "active"));
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
   let started = 0;
+  let skipped = 0;
   const failed: string[] = [];
   for (const row of rows) {
+    // Аль хэдийн target хувилбар дээр байгаа (health.version таарсан) бол алгасна —
+    // самбарын товчны тоолуур (behind !== false || health алга)-тай ижил дүрэм.
+    const health = await fetchHealth(row.appUrl);
+    if (health?.ok && health.version && `v${health.version}`.replace(/^vv/, "v") === target) {
+      skipped += 1;
+      continue;
+    }
     try {
       const branch = await getDefaultBranch(row.githubRepo);
       await dispatchWorkflow(row.githubRepo, "upstream-sync.yml", branch, { ref: target });
@@ -243,9 +258,8 @@ export async function syncAllCustomers(): Promise<ActionResult> {
     }
   }
   revalidatePath("/");
-  return started > 0 || failed.length === 0
-    ? { ok: true, message: `${started} харилцагчид ${target} sync эхэллээ${failed.length ? `; алдаа: ${failed.join(", ")}` : ""}` }
-    : { ok: false, error: failed.join("; ") };
+  const note = `${started} харилцагчид ${target} sync эхэллээ${skipped ? ` · ${skipped} аль хэдийн шинэ` : ""}${failed.length ? `; алдаа: ${failed.join(", ")}` : ""}`;
+  return started > 0 || failed.length === 0 ? { ok: true, message: note } : { ok: false, error: failed.join("; ") };
 }
 
 /** Төлөв хурдан солих (Идэвхтэй ↔ Түр зогсоох ↔ Архив). */

@@ -317,17 +317,18 @@ export async function getTokenInfo(): Promise<TokenInfo> {
 }
 
 /** Repo эзэн (org/user)-д хандаж чадах эсэх — repo үүсгэх урьдчилсан шалгалт. */
-export async function checkOwnerAccess(): Promise<{ ok: boolean; detail: string }> {
+export async function checkOwnerAccess(login: string): Promise<{ ok: boolean; detail: string }> {
   try {
     if (config.ownerType === "org") {
       const org = await gh<{ login: string }>(`/orgs/${config.owner}`);
       const membership = await gh<{ role: string; state: string }>(
-        `/orgs/${config.owner}/memberships/${encodeURIComponent((await getTokenInfo()).login)}`
+        `/orgs/${config.owner}/memberships/${encodeURIComponent(login)}`
       );
       return { ok: membership.role === "admin", detail: `${org.login} — ${membership.role} (${membership.state})` };
     }
-    const user = await gh<{ login: string }>(`/users/${config.owner}`);
-    return { ok: true, detail: `хэрэглэгч ${user.login}` };
+    // Хэрэглэгчийн акаунт: token яг тэр хэрэглэгчийнх байх ёстой (repo үүсгэх, /user/repos)
+    const ok = login.toLowerCase() === config.owner.toLowerCase();
+    return { ok, detail: ok ? `token @${login}-ийнх — repo эзэнтэй таарна` : `token @${login}-ийнх, харин GITHUB_OWNER=${config.owner}` };
   } catch (error) {
     return { ok: false, detail: error instanceof Error ? error.message : String(error) };
   }
@@ -353,11 +354,13 @@ export async function getCoreActionsConfig(): Promise<{
   }
 }
 
+/** Зөвхөн 404 → false; эрх/сүлжээний алдаа дуудагч руу шидэгдэнэ. */
 export async function coreWorkflowExists(file: string): Promise<boolean> {
   try {
     await gh(`/repos/${config.coreRepo}/actions/workflows/${file}`);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return false;
+    throw error;
   }
 }
