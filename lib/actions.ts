@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { checkPassword, createSession, destroySession, requireSession } from "./auth";
 import { config } from "./config";
 import { getCustomerBySlug, logEvent } from "./customers";
+import { provision } from "./provision";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -47,64 +48,31 @@ export async function logout(): Promise<void> {
   redirect("/login");
 }
 
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
-
-/** «Харилцагч нэмэх»: DB бүртгэл + core repo-ийн provision-customer.yml dispatch. */
+/** «Харилцагч нэмэх» маягт → lib/provision.ts (REST /api/customers-тай ижил цөм). */
 export async function provisionCustomer(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
   await requireSession();
-  const slug = text(formData, "slug").toLowerCase();
-  const displayName = text(formData, "display_name");
-  const githubUsers = text(formData, "github_users");
-  const appUrl = text(formData, "app_url");
-  const ref = text(formData, "ref") || "main";
-  const plan = text(formData, "plan") as CustomerPlan;
-  const monthlyFee = text(formData, "monthly_fee") || "0";
-
-  if (!SLUG_RE.test(slug))
-    return { ok: false, error: "Код зөвхөн жижиг латин үсэг, тоо, зураас (2–31 тэмдэгт)" };
-  if (!displayName) return { ok: false, error: "Харилцагчийн нэр хоосон байна" };
-  if (appUrl && !/^https?:\/\//.test(appUrl)) return { ok: false, error: "App URL https://-ээр эхлэх ёстой" };
-  if (!CUSTOMER_PLANS.includes(plan)) return { ok: false, error: "Багц буруу" };
-  if (!/^\d+(\.\d{1,2})?$/.test(monthlyFee)) return { ok: false, error: "Сарын төлбөр тоо байх ёстой" };
-  if (await getCustomerBySlug(slug)) return { ok: false, error: `"${slug}" код аль хэдийн бүртгэлтэй` };
-  if (await getCustomerRepo(slug))
-    return { ok: false, error: `${config.repoPrefix}${slug} repo аль хэдийн бий — самбар нээхэд автоматаар бүртгэгдэнэ` };
-
+  let slug: string;
   try {
-    const branch = await getDefaultBranch(config.coreRepo);
-    await dispatchWorkflow(config.coreRepo, "provision-customer.yml", branch, {
-      slug,
-      display_name: displayName,
-      github_users: githubUsers,
-      app_url: appUrl,
-      ref,
+    const created = await provision({
+      slug: text(formData, "slug"),
+      displayName: text(formData, "display_name"),
+      registerNo: text(formData, "register_no"),
+      contactName: text(formData, "contact_name"),
+      contactEmail: text(formData, "contact_email"),
+      contactPhone: text(formData, "contact_phone"),
+      githubUsers: text(formData, "github_users"),
+      appUrl: text(formData, "app_url"),
+      ref: text(formData, "ref"),
+      plan: text(formData, "plan"),
+      monthlyFee: text(formData, "monthly_fee"),
     });
+    slug = created.slug;
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
-
-  const [created] = await db
-    .insert(customers)
-    .values({
-      slug,
-      displayName,
-      registerNo: text(formData, "register_no") || null,
-      contactName: text(formData, "contact_name") || null,
-      contactEmail: text(formData, "contact_email") || null,
-      contactPhone: text(formData, "contact_phone") || null,
-      githubRepo: `${config.owner}/${config.repoPrefix}${slug}`,
-      githubUsers: githubUsers || null,
-      appUrl: appUrl || null,
-      seededRef: ref,
-      plan,
-      monthlyFee,
-      status: "provisioning",
-    })
-    .returning();
-  await logEvent(created.id, "provisioned", `Repo үүсгэх ажил эхэллээ (core ${ref})`);
   redirect(`/customers/${slug}`);
 }
 
