@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { checkPassword, createSession, destroySession, requireSession } from "./auth";
-import { config } from "./config";
 import { getCustomerBySlug, logEvent } from "./customers";
 import { provision } from "./provision";
 import { db } from "./db";
@@ -19,7 +18,6 @@ import {
 import {
   dispatchWorkflow,
   fetchHealth,
-  getCustomerRepo,
   getDefaultBranch,
   getLatestRelease,
   GitHubError,

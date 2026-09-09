@@ -53,6 +53,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
           )}
         </div>
       )}
+      {repo && !repo.pushedAt && (
+        <div className="notice notice-danger">
+          <strong>Repo үүссэн ч хоосон.</strong> Core түүх push хийгдээгүй — core repo-ийн Actions → «Provision customer» → Run workflow (slug: <span className="mono">{c.slug}</span>) дахин ажиллуулна; repo-г устгах шаардлагагүй.
+        </div>
+      )}
       {!repo && c.status !== "provisioning" && (
         <div className="notice notice-danger">GitHub дээр <span className="mono">{c.githubRepo}</span> олдсонгүй (устгагдсан эсвэл token хандахгүй).</div>
       )}

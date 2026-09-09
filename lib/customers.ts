@@ -63,7 +63,8 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
   const updated: Customer[] = [];
   for (const row of rows) {
     const repo = byRepo.get(row.githubRepo.toLowerCase());
-    if (repo && row.status === "provisioning") {
+    // pushedAt байхгүй = хоосон repo (seed амжаагүй) — идэвхтэй гэж тооцохгүй.
+    if (repo && repo.pushedAt && row.status === "provisioning") {
       const [next] = await db
         .update(customers)
         .set({ status: "active", updatedAt: new Date() })
@@ -75,7 +76,7 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
   }
   const known = new Set(rows.map((r) => r.githubRepo.toLowerCase()));
   for (const repo of repos) {
-    if (known.has(repo.fullName.toLowerCase())) continue;
+    if (known.has(repo.fullName.toLowerCase()) || !repo.pushedAt) continue;
     const [created] = await db
       .insert(customers)
       .values({
@@ -204,6 +205,8 @@ export function computeAttention(
   for (const { customer: c, repo, health, behind, lastSync } of items) {
     if (repoListOk && c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo 10+ минут үүсээгүй — core-ийн PROVISION_TOKEN, workflow run-ыг шалга" });
+    if (repoListOk && repo && !repo.pushedAt)
+      out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo үүссэн ч хоосон — core түүх push хийгдээгүй; provision workflow-г дахин ажиллуул" });
     if (health && !health.ok)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Deploy хүрэхгүй: ${health.error ?? "unknown"}` });
     if (behind)
