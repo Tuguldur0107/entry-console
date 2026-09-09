@@ -1,22 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CustomerEditForm, InviteForm, NoteForm, PLAN_LABELS, STATUS_LABELS, SyncButton } from "@/components/forms";
-import { HealthBadge, RunBadge, fmtDate } from "@/components/status";
+import { CopyButton, CustomerEditForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
+import { Icons } from "@/components/icons";
+import { HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 
-const EVENT_LABELS: Record<string, string> = {
-  provisioned: "Үүсгэлт",
-  activated: "Идэвхжсэн",
-  sync: "Sync",
-  invite: "Урилга",
-  status: "Төлөв",
-  note: "Тэмдэглэл",
-  billing: "Төлбөр",
-};
+const EVENT_LABELS: Record<string, string> = { provisioned: "Үүсгэлт", activated: "Идэвхжсэн", sync: "Sync", invite: "Урилга", status: "Төлөв", note: "Тэмдэглэл", billing: "Төлбөр" };
 
 export default async function CustomerPage({ params }: { params: Promise<{ slug: string }> }) {
   await requireSession();
@@ -26,115 +19,132 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
   const { latest, customer } = await loadCustomerDetail(row);
   const c = customer.customer;
   const repo = customer.repo;
+  const repoUrl = repo?.htmlUrl ?? `https://github.com/${c.githubRepo}`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <Link href="/" className="text-xs text-text-3 hover:underline">← Самбар</Link>
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-lg font-semibold">{c.displayName}</h1>
-          <span className={`badge ${c.status === "active" ? "badge-success" : c.status === "provisioning" ? "badge-warning" : "badge-muted"}`}>
-            {STATUS_LABELS[c.status]}
-          </span>
-          <span className="badge badge-muted">{PLAN_LABELS[c.plan]}</span>
-          <HealthBadge health={customer.health} behind={customer.behind} latest={latest?.tagName ?? null} />
+        <Link href="/customers" className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1"><Icons.arrowLeft className="h-3.5 w-3.5" /> Харилцагчид</Link>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">{c.displayName}</h1>
+            <StatusBadge status={c.status} />
+            <span className="badge badge-muted badge-plain">{PLAN_LABELS[c.plan]}</span>
+            <HealthBadge health={customer.health} behind={customer.behind} latest={latest?.tagName ?? null} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {c.appUrl && <a href={c.appUrl} target="_blank" rel="noreferrer" className="btn btn-sm"><Icons.external className="h-4 w-4" /> Апп нээх</a>}
+            <a href={repoUrl} target="_blank" rel="noreferrer" className="btn btn-sm"><Icons.github className="h-4 w-4" /> Repo</a>
+          </div>
         </div>
-        <p className="text-sm text-text-3">
-          {repo ? (
-            <a href={repo.htmlUrl} target="_blank" rel="noreferrer" className="hover:underline">{repo.fullName}</a>
-          ) : (
-            c.githubRepo
-          )}
-          {" · "}бүртгэсэн {fmtDate(c.createdAt.toISOString())}
-          {c.seededRef && ` · seed ${c.seededRef}`}
-          {customer.health?.sha && ` · deploy ${customer.health.sha.slice(0, 7)}`}
+        <p className="mt-1 text-sm text-text-3">
+          <span className="mono">{c.githubRepo}</span> · бүртгэсэн {fmtDate(c.createdAt, false)}
+          {c.seededRef && <> · seed <span className="mono">{c.seededRef}</span></>}
+          {customer.health?.sha && <> · deploy <span className="mono">{customer.health.sha.slice(0, 7)}</span></>}
         </p>
       </div>
 
-      {!repo && (
-        <div className="card border-warning bg-warning-bg p-4 text-sm">
-          <strong>Repo хараахан үүсээгүй.</strong> Core repo дээр provision ажиллаж байна —{" "}
+      {!repo && c.status === "provisioning" && (
+        <div className="notice notice-warning">
+          <strong>Repo үүсгэж байна.</strong>{" "}
           {customer.provisionRun ? (
-            <a href={customer.provisionRun.htmlUrl} target="_blank" rel="noreferrer" className="underline">
-              run харах ({customer.provisionRun.status}
-              {customer.provisionRun.conclusion ? ` · ${customer.provisionRun.conclusion}` : ""})
-            </a>
+            <>Core дээр workflow <a href={customer.provisionRun.htmlUrl} target="_blank" rel="noreferrer" className="underline">{customer.provisionRun.status}{customer.provisionRun.conclusion ? ` · ${customer.provisionRun.conclusion}` : ""}</a>. Дууссаны дараа хуудсыг сэргээхэд «Идэвхтэй» болно.</>
           ) : (
-            "run олдсонгүй (core repo-ийн PROVISION_TOKEN secret тохируулсан эсэхийг шалга)"
+            <>Workflow run олдсонгүй — <Link href="/settings" className="underline">Тохиргоо, шалгалт</Link> хуудсаар PROVISION_TOKEN, CUSTOMER_OWNER-ыг шалга.</>
           )}
-          . Дууссаны дараа хуудсыг сэргээхэд «Идэвхтэй» болно.
         </div>
       )}
+      {!repo && c.status !== "provisioning" && (
+        <div className="notice notice-danger">GitHub дээр <span className="mono">{c.githubRepo}</span> олдсонгүй (устгагдсан эсвэл token хандахгүй).</div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <section className="card space-y-3 p-5 md:col-span-2">
-          <h2 className="text-sm font-semibold">Бүртгэл, гэрээ, төлбөр</h2>
-          <CustomerEditForm customer={c} />
-        </section>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Section title="Бүртгэл, гэрээ, төлбөр" sub="Энд хадгалагдана; repo-д нөлөөлөхгүй (Deploy хаягаас бусад)">
+            <CustomerEditForm customer={c} />
+          </Section>
 
-        <section className="card space-y-3 p-5">
-          <h2 className="text-sm font-semibold">Core шинэчлэлт авах</h2>
-          <p className="text-sm text-text-2">
-            Харилцагчийн repo дээр <code className="text-xs">upstream-sync.yml</code> ажиллаж PR нээнэ. Core одоо{" "}
-            <strong>{latest?.tagName ?? "release алга"}</strong>.
-          </p>
-          <SyncButton slug={slug} defaultRef={latest?.tagName ?? null} />
-          {customer.openPulls.length > 0 && (
-            <div className="text-sm">
-              <div className="mb-1 text-xs text-text-3">Нээлттэй PR</div>
-              <ul className="space-y-1">
-                {customer.openPulls.map((p) => (
-                  <li key={p.number}>
-                    <a href={p.htmlUrl} target="_blank" rel="noreferrer" className="hover:underline">#{p.number} {p.title}</a>
-                  </li>
-                ))}
-              </ul>
+          <Section title="Core шинэчлэлт" sub={`Харилцагчийн repo дээр upstream-sync.yml ажиллаж PR нээнэ · core ${latest?.tagName ?? "—"}`}>
+            <SyncButton slug={slug} defaultRef={latest?.tagName ?? null} />
+            {customer.openPulls.length > 0 && (
+              <div className="mt-4">
+                <div className="mb-1 text-xs font-medium text-text-3">Нээлттэй PR</div>
+                <ul className="space-y-1 text-sm">
+                  {customer.openPulls.map((p) => <li key={p.number}><a href={p.htmlUrl} target="_blank" rel="noreferrer" className="hover:underline">#{p.number} {p.title}</a></li>)}
+                </ul>
+              </div>
+            )}
+            <div className="mt-4">
+              <div className="mb-1 text-xs font-medium text-text-3">Сүүлийн sync ажиллагаа</div>
+              {customer.syncRuns.length === 0 ? <p className="text-sm text-text-3">—</p> : (
+                <ul className="space-y-1.5 text-sm">
+                  {customer.syncRuns.map((run) => <li key={run.id} className="flex items-center gap-2"><RunBadge run={run} /><span className="text-text-3">{fmtDate(run.createdAt)}</span></li>)}
+                </ul>
+              )}
             </div>
-          )}
-          <div className="text-sm">
-            <div className="mb-1 text-xs text-text-3">Сүүлийн sync ажиллагаа</div>
-            {customer.syncRuns.length === 0 && <p className="text-text-3">—</p>}
-            <ul className="space-y-1">
-              {customer.syncRuns.map((run) => (
-                <li key={run.id} className="flex items-center gap-2">
-                  <RunBadge run={run} />
-                  <span className="text-text-2">{fmtDate(run.createdAt)}</span>
+          </Section>
+
+          <Section title="Түүх" sub="Бүх үйлдэл, тэмдэглэл">
+            <NoteForm slug={slug} />
+            <ul className="mt-3 divide-y divide-border text-sm">
+              {customer.events.map((e) => (
+                <li key={e.id} className="flex gap-3 py-2.5">
+                  <span className="w-16 shrink-0 text-xs text-text-3" title={fmtDate(e.createdAt)}>{fmtAgo(e.createdAt)}</span>
+                  <span className="badge badge-muted badge-plain shrink-0">{EVENT_LABELS[e.type] ?? e.type}</span>
+                  <span className="text-text-2">{e.message}</span>
                 </li>
               ))}
             </ul>
-          </div>
-        </section>
+          </Section>
+        </div>
 
-        <section className="card space-y-3 p-5">
-          <h2 className="text-sm font-semibold">GitHub хандах эрх</h2>
-          <ul className="space-y-1 text-sm">
-            {customer.collaborators.length === 0 && <li className="text-text-3">—</li>}
-            {customer.collaborators.map((col) => (
-              <li key={col.login} className="flex items-center gap-2">
-                <a href={col.htmlUrl} target="_blank" rel="noreferrer" className="font-medium hover:underline">{col.login}</a>
-                <span className="badge badge-muted">{col.permission}</span>
-                {col.pending && <span className="badge badge-warning">урилга хүлээгдэж байна</span>}
-              </li>
-            ))}
-          </ul>
-          <InviteForm slug={slug} />
-          <p className="hint">Харилцагчийн IT-д Write хангалттай (Claude Code push хийнэ). Нягтлан, захиралд GitHub хэрэггүй.</p>
-        </section>
+        <div className="space-y-4">
+          <Section title="Хураангуй">
+            <dl className="space-y-2 text-sm">
+              <Row k="Сарын төлбөр" v={Number(c.monthlyFee) > 0 ? `${fmtMnt(c.monthlyFee)}` : "—"} />
+              <Row k="Төлбөр эхлэх" v={c.billingStartsAt ?? "—"} />
+              <Row k="ТТД" v={c.registerNo ?? "—"} />
+              <Row k="Холбоо барих" v={[c.contactName, c.contactPhone, c.contactEmail].filter(Boolean).join(" · ") || "—"} />
+              <Row k="Deploy" v={c.appUrl ? <a href={c.appUrl} target="_blank" rel="noreferrer" className="hover:underline">{c.appUrl.replace(/^https?:\/\//, "")}</a> : "—"} />
+            </dl>
+          </Section>
 
-        <section className="card space-y-3 p-5 md:col-span-2">
-          <h2 className="text-sm font-semibold">Түүх</h2>
-          <NoteForm slug={slug} />
-          <ul className="divide-y divide-border text-sm">
-            {customer.events.map((e) => (
-              <li key={e.id} className="flex gap-3 py-2">
-                <span className="w-36 shrink-0 text-xs text-text-3">{fmtDate(e.createdAt.toISOString())}</span>
-                <span className="badge badge-muted">{EVENT_LABELS[e.type] ?? e.type}</span>
-                <span className="text-text-2">{e.message}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+          <Section title="GitHub хандах эрх" sub="Харилцагчийн IT-д Write хангалттай">
+            <ul className="mb-3 space-y-1.5 text-sm">
+              {customer.collaborators.length === 0 && <li className="text-text-3">{repo ? "Collaborator алга" : "—"}</li>}
+              {customer.collaborators.map((col) => (
+                <li key={col.login} className="flex flex-wrap items-center gap-2">
+                  <a href={col.htmlUrl} target="_blank" rel="noreferrer" className="font-medium hover:underline">{col.login}</a>
+                  <span className="badge badge-muted badge-plain">{col.permission}</span>
+                  {col.pending && <span className="badge badge-warning">хүлээгдэж байна</span>}
+                </li>
+              ))}
+            </ul>
+            {repo && <InviteForm slug={slug} />}
+          </Section>
+
+          <Section title="Харилцагчид өгөх мэдээлэл" sub="Хуулж илгээнэ">
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-2"><span className="mono truncate">{repoUrl}</span><CopyButton text={repoUrl} /></div>
+              {c.appUrl && <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl}</span><CopyButton text={c.appUrl} /></div>}
+              <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl ?? "https://<app>"}/api/mcp</span><CopyButton text={`${c.appUrl ?? "https://<app>"}/api/mcp`} label="MCP URL" /></div>
+            </div>
+          </Section>
+
+          <Section title="Төлөв">
+            <StatusActions slug={slug} status={c.status} />
+          </Section>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-text-3">{k}</dt>
+      <dd className="text-right text-text-1">{v}</dd>
     </div>
   );
 }

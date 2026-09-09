@@ -293,3 +293,71 @@ export async function fetchHealth(appUrl: string | null): Promise<Health | null>
     return { ok: false, version: null, sha: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+// ── Тохиргооны шалгалт (/settings) ─────────────────────────────────────────
+
+export interface TokenInfo {
+  login: string;
+  /** Classic token-ийн scope-ууд (fine-grained бол хоосон) */
+  scopes: string[];
+  tokenType: "classic" | "fine-grained" | "unknown";
+}
+
+export async function getTokenInfo(): Promise<TokenInfo> {
+  const response = await fetch(`${API}/user`, {
+    headers: { Authorization: `Bearer ${config.githubToken}`, Accept: "application/vnd.github+json" },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new GitHubError(response.status, `GitHub ${response.status}: token хүчингүй`);
+  const user = (await response.json()) as { login: string };
+  const scopes = (response.headers.get("x-oauth-scopes") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const token = config.githubToken;
+  const tokenType = token.startsWith("ghp_") ? "classic" : token.startsWith("github_pat_") ? "fine-grained" : "unknown";
+  return { login: user.login, scopes, tokenType };
+}
+
+/** Repo эзэн (org/user)-д хандаж чадах эсэх — repo үүсгэх урьдчилсан шалгалт. */
+export async function checkOwnerAccess(): Promise<{ ok: boolean; detail: string }> {
+  try {
+    if (config.ownerType === "org") {
+      const org = await gh<{ login: string }>(`/orgs/${config.owner}`);
+      const membership = await gh<{ role: string; state: string }>(
+        `/orgs/${config.owner}/memberships/${encodeURIComponent((await getTokenInfo()).login)}`
+      );
+      return { ok: membership.role === "admin", detail: `${org.login} — ${membership.role} (${membership.state})` };
+    }
+    const user = await gh<{ login: string }>(`/users/${config.owner}`);
+    return { ok: true, detail: `хэрэглэгч ${user.login}` };
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Core repo-ийн Actions secret нэрс (утга харагдахгүй) ба variable-ууд. */
+export async function getCoreActionsConfig(): Promise<{
+  secrets: string[];
+  variables: Record<string, string>;
+  error?: string;
+}> {
+  try {
+    const [s, v] = await Promise.all([
+      gh<{ secrets: { name: string }[] }>(`/repos/${config.coreRepo}/actions/secrets?per_page=100`),
+      gh<{ variables: { name: string; value: string }[] }>(`/repos/${config.coreRepo}/actions/variables?per_page=100`),
+    ]);
+    return {
+      secrets: s.secrets.map((x) => x.name),
+      variables: Object.fromEntries(v.variables.map((x) => [x.name, x.value])),
+    };
+  } catch (error) {
+    return { secrets: [], variables: {}, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function coreWorkflowExists(file: string): Promise<boolean> {
+  try {
+    await gh(`/repos/${config.coreRepo}/actions/workflows/${file}`);
+    return true;
+  } catch {
+    return false;
+  }
+}

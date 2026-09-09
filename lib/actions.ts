@@ -222,3 +222,42 @@ export async function addNote(
   revalidatePath(`/customers/${slug}`);
   return { ok: true, message: "Нэмэгдлээ" };
 }
+
+
+/** Бүх идэвхтэй харилцагчид core-ийн сүүлийн release-ийг sync хийх PR нээнэ. */
+export async function syncAllCustomers(): Promise<ActionResult> {
+  await requireSession();
+  const target = (await getLatestRelease())?.tagName;
+  if (!target) return { ok: false, error: "Core-д release алга" };
+  const rows = await db.select().from(customers).where(eq(customers.status, "active"));
+  let started = 0;
+  const failed: string[] = [];
+  for (const row of rows) {
+    try {
+      const branch = await getDefaultBranch(row.githubRepo);
+      await dispatchWorkflow(row.githubRepo, "upstream-sync.yml", branch, { ref: target });
+      await logEvent(row.id, "sync", `Бөөн sync: ${target}`);
+      started += 1;
+    } catch (error) {
+      failed.push(`${row.slug}: ${errorText(error)}`);
+    }
+  }
+  revalidatePath("/");
+  return started > 0 || failed.length === 0
+    ? { ok: true, message: `${started} харилцагчид ${target} sync эхэллээ${failed.length ? `; алдаа: ${failed.join(", ")}` : ""}` }
+    : { ok: false, error: failed.join("; ") };
+}
+
+/** Төлөв хурдан солих (Идэвхтэй ↔ Түр зогсоох ↔ Архив). */
+export async function setCustomerStatus(slug: string, status: CustomerStatus): Promise<ActionResult> {
+  await requireSession();
+  if (!CUSTOMER_STATUSES.includes(status)) return { ok: false, error: "Төлөв буруу" };
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  await db.update(customers).set({ status, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+  await logEvent(customer.id, "status", `Төлөв: ${customer.status} → ${status}`);
+  revalidatePath(`/customers/${slug}`);
+  revalidatePath("/");
+  revalidatePath("/customers");
+  return { ok: true, message: "Төлөв солигдлоо" };
+}

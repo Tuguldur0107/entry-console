@@ -11,12 +11,10 @@ export function LoginForm() {
     <form action={action} className="space-y-4">
       <div>
         <label className="label" htmlFor="password">Нууц үг</label>
-        <input id="password" name="password" type="password" className="input" autoFocus required />
+        <input id="password" name="password" type="password" className="input" autoFocus required autoComplete="current-password" />
       </div>
       <Notice result={result} />
-      <button className="btn btn-primary w-full justify-center" type="submit" disabled={pending}>
-        {pending ? "…" : "Нэвтрэх"}
-      </button>
+      <button className="btn btn-primary w-full" type="submit" disabled={pending}>{pending ? "…" : "Нэвтрэх"}</button>
     </form>
   );
 }

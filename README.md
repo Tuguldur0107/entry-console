@@ -8,6 +8,10 @@ Entry Accounting-ийн **харилцагчдыг** удирдах самбар
 
 | Боломж | Хэрхэн |
 |--------|--------|
+| Самбар | KPI (идэвхтэй, MRR, хоцорсон, хүрэхгүй), анхаарах зүйлс, сүүлийн үйл явдал, бөөн sync |
+| Тохиргоо, шалгалт | Token scope, org эрх, core secret/variable, workflow, DB — ногоон/улаан шалгалт + засах заавар |
+| Харилцагчид | Хайлт, төлвөөр шүүх, CSV экспорт; дэлгэрэнгүйд гэрээ/төлбөр, sync, эрх, түүх, төлөв |
+| Dark mode | Системийн тохиргоо + гараар солих, localStorage-д хадгална |
 | Харилцагч нэмэх (бүртгэл + repo) | Core repo-ийн `provision-customer.yml`-ийг dispatch → repo үүсэх, core түүх push, Actions permission, `UPSTREAM_TOKEN`, хэрэглэгч урих |
 | Хувилбарын самбар | Харилцагч бүрийн `<app>/api/health` → version vs core-ийн сүүлийн release |
 | Sync | Харилцагчийн `upstream-sync.yml` dispatch (ref = tag) → PR |

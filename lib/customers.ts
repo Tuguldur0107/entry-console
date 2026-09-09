@@ -184,3 +184,69 @@ export async function loadCustomerDetail(
     customer: { ...summary, collaborators, syncRuns, openPulls, events, provisionRun },
   };
 }
+
+
+// ── Самбарын нэмэлт: анхаарах зүйлс, сүүлийн үйл явдал ─────────────────────
+
+export interface AttentionItem {
+  tone: "danger" | "warning" | "info";
+  slug: string;
+  title: string;
+  detail: string;
+}
+
+export function computeAttention(items: CustomerSummary[], latest: Release | null): AttentionItem[] {
+  const out: AttentionItem[] = [];
+  for (const { customer: c, repo, health, behind, lastSync } of items) {
+    if (c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
+      out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo 10+ минут үүсээгүй — core-ийн PROVISION_TOKEN, workflow run-ыг шалга" });
+    if (health && !health.ok)
+      out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Deploy хүрэхгүй: ${health.error ?? "unknown"}` });
+    if (behind)
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Хувилбар v${health?.version} — core ${latest?.tagName}. Sync хийх` });
+    if (lastSync && lastSync.status === "completed" && lastSync.conclusion !== "success")
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Сүүлийн upstream-sync амжилтгүй" });
+    if (c.status === "active" && !c.appUrl)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: "Deploy хаяг бүртгээгүй — хувилбар хянагдахгүй" });
+  }
+  return out;
+}
+
+export interface ActivityItem extends CustomerEvent {
+  slug: string;
+  displayName: string;
+}
+
+export async function loadRecentActivity(limit = 12): Promise<ActivityItem[]> {
+  await ensureSchema();
+  const rows = await db
+    .select({
+      id: customerEvents.id,
+      customerId: customerEvents.customerId,
+      type: customerEvents.type,
+      message: customerEvents.message,
+      createdAt: customerEvents.createdAt,
+      slug: customers.slug,
+      displayName: customers.displayName,
+    })
+    .from(customerEvents)
+    .innerJoin(customers, eq(customers.id, customerEvents.customerId))
+    .orderBy(desc(customerEvents.createdAt))
+    .limit(limit);
+  return rows;
+}
+
+export function filterCustomers(
+  items: CustomerSummary[],
+  q: string | undefined,
+  status: string | undefined
+): CustomerSummary[] {
+  const needle = (q ?? "").trim().toLowerCase();
+  return items.filter(({ customer: c }) => {
+    if (status && status !== "all" && c.status !== status) return false;
+    if (!needle) return true;
+    return [c.displayName, c.slug, c.registerNo, c.contactName, c.contactEmail, c.githubRepo]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(needle));
+  });
+}
