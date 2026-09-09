@@ -1,12 +1,14 @@
 # Entry Console
 
-Entry Accounting-ийн **харилцагчийн repo-уудыг** удирдах жижиг самбар. DB байхгүй —
-эх сурвалж нь GitHub: харилцагч = `entry-customer` topic-той repo, тохиргоо нь repo
-variables (`ENTRY_DISPLAY_NAME`, `ENTRY_APP_URL`), статус нь workflow run.
+Entry Accounting-ийн **харилцагчдыг** удирдах самбар. Хоёр эх сурвалж:
+- **Postgres** (`customers`, `customer_events`) — бизнесийн бүртгэл: нэр, ТТД, холбоо барих,
+  багц, сарын төлбөр, төлөв, түүх. Төлбөр тооцооны хүснэгтүүд энд нэмэгдэнэ.
+- **GitHub** — техник төлөв: `entry-customer` topic-той repo, workflow run, collaborator.
+  DB-д байхгүй repo самбар нээхэд автоматаар бүртгэгдэнэ; provisioning → repo үүсмэгц active.
 
 | Боломж | Хэрхэн |
 |--------|--------|
-| Харилцагч нэмэх | Core repo-ийн `provision-customer.yml`-ийг dispatch → repo үүсэх, core түүх push, Actions permission, `UPSTREAM_TOKEN`, хэрэглэгч урих |
+| Харилцагч нэмэх (бүртгэл + repo) | Core repo-ийн `provision-customer.yml`-ийг dispatch → repo үүсэх, core түүх push, Actions permission, `UPSTREAM_TOKEN`, хэрэглэгч урих |
 | Хувилбарын самбар | Харилцагч бүрийн `<app>/api/health` → version vs core-ийн сүүлийн release |
 | Sync | Харилцагчийн `upstream-sync.yml` dispatch (ref = tag) → PR |
 | Эрх | Collaborator урих (Read/Write/Admin), хүлээгдэж буй урилга |
@@ -15,15 +17,16 @@ variables (`ENTRY_DISPLAY_NAME`, `ENTRY_APP_URL`), статус нь workflow ru
 
 ```bash
 npm ci
-cp .env.example .env.local   # CONSOLE_PASSWORD, AUTH_SECRET, GITHUB_TOKEN
+cp .env.example .env.local   # DATABASE_URL, CONSOLE_PASSWORD, AUTH_SECRET, GITHUB_TOKEN
+npm run db:push
 npm run dev
 ```
 
 ## Railway
 
-Шинэ service → GitHub repo `entry-console` → Variables: `CONSOLE_PASSWORD`, `AUTH_SECRET`,
-`GITHUB_TOKEN` (+ `GITHUB_OWNER`, `GITHUB_OWNER_TYPE`, `CORE_REPO` шаардлагатай бол).
-`railway.toml` healthcheck `/api/health`.
+Service `entry-console` (GitHub repo) + Postgres `Entry console DB`. Variables: `DATABASE_URL`
+(Postgres-ийн reference), `CONSOLE_PASSWORD`, `AUTH_SECRET`, `GITHUB_TOKEN`, `GITHUB_OWNER`,
+`GITHUB_OWNER_TYPE` (+ `CORE_REPO`). `railway.toml`: preDeploy `db:push`, healthcheck `/api/health`.
 
 Core repo талд: Settings → Secrets → `PROVISION_TOKEN`, `UPSTREAM_READ_TOKEN`
 (`.github/workflows/provision-customer.yml` толгойн тайлбар).

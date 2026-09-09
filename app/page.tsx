@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PLAN_LABELS, STATUS_LABELS } from "@/components/forms";
 import { HealthBadge, RunBadge, fmtDate } from "@/components/status";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
@@ -7,16 +8,15 @@ import { loadDashboard } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ provisioning?: string }>;
-}) {
+const fmtMnt = (v: string) => new Intl.NumberFormat("en-US").format(Number(v));
+
+export default async function DashboardPage() {
   await requireSession();
-  const { provisioning: justStarted } = await searchParams;
   const { latest, customers, provisioning } = await loadDashboard();
+  const active = customers.filter((c) => c.customer.status === "active");
   const behindCount = customers.filter((c) => c.behind).length;
   const downCount = customers.filter((c) => c.health && !c.health.ok).length;
+  const mrr = active.reduce((s, c) => s + Number(c.customer.monthlyFee), 0);
 
   return (
     <div className="space-y-6">
@@ -32,27 +32,22 @@ export default async function DashboardPage({
             ) : (
               "release алга"
             )}{" "}
-            · {config.coreRepo}
+            · {config.coreRepo} · repo эзэн {config.owner}
           </p>
         </div>
         <Link href="/customers/new" className="btn btn-primary">+ Харилцагч нэмэх</Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Нийт харилцагч" value={customers.length} />
-        <Stat label="Хоцорсон хувилбар" value={behindCount} tone={behindCount > 0 ? "warning" : "success"} />
-        <Stat label="Хүрэхгүй deploy" value={downCount} tone={downCount > 0 ? "danger" : "success"} />
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Stat label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${customers.length}`} />
+        <Stat label="Сарын орлого (MRR)" value={`${fmtMnt(String(mrr))} ₮`} />
+        <Stat label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} />
+        <Stat label="Хүрэхгүй deploy" value={String(downCount)} tone={downCount > 0 ? "danger" : "success"} />
       </div>
 
-      {(provisioning.length > 0 || justStarted) && (
+      {provisioning.length > 0 && (
         <div className="card p-4">
-          <h2 className="mb-2 text-sm font-semibold">Үүсгэж байна</h2>
-          {justStarted && provisioning.length === 0 && (
-            <p className="text-sm text-text-2">
-              <span className="badge badge-warning">эхэлсэн</span> entry-{justStarted} — workflow эхлэхэд 10–20 сек;
-              хуудсыг сэргээнэ үү.
-            </p>
-          )}
+          <h2 className="mb-2 text-sm font-semibold">Repo үүсгэж байна</h2>
           <ul className="space-y-1 text-sm">
             {provisioning.map((run) => (
               <li key={run.id} className="flex items-center gap-3">
@@ -70,7 +65,8 @@ export default async function DashboardPage({
           <thead className="text-left text-xs text-text-3">
             <tr className="border-b border-border">
               <th className="px-4 py-2.5 font-medium">Харилцагч</th>
-              <th className="px-4 py-2.5 font-medium">Repo</th>
+              <th className="px-4 py-2.5 font-medium">Төлөв</th>
+              <th className="px-4 py-2.5 font-medium">Багц</th>
               <th className="px-4 py-2.5 font-medium">Deploy</th>
               <th className="px-4 py-2.5 font-medium">Сүүлийн sync</th>
               <th className="px-4 py-2.5 font-medium">Үүссэн</th>
@@ -79,37 +75,40 @@ export default async function DashboardPage({
           <tbody>
             {customers.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-text-3">
+                <td colSpan={6} className="px-4 py-8 text-center text-text-3">
                   Харилцагч алга. «Харилцагч нэмэх» товчоор эхний repo-гоо үүсгэнэ үү.
                 </td>
               </tr>
             )}
-            {customers.map((c) => (
-              <tr key={c.repo.slug} className="border-b border-border last:border-0 hover:bg-bg">
+            {customers.map(({ customer: c, repo, health, behind, lastSync }) => (
+              <tr key={c.id} className="border-b border-border last:border-0 hover:bg-bg">
                 <td className="px-4 py-2.5">
-                  <Link href={`/customers/${c.repo.slug}`} className="font-medium hover:underline">
-                    {c.displayName}
-                  </Link>
-                  <div className="text-xs text-text-3">{c.repo.slug}</div>
+                  <Link href={`/customers/${c.slug}`} className="font-medium hover:underline">{c.displayName}</Link>
+                  <div className="text-xs text-text-3">
+                    {repo ? (
+                      <a href={repo.htmlUrl} target="_blank" rel="noreferrer" className="hover:underline">{repo.fullName}</a>
+                    ) : (
+                      c.githubRepo
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2.5">
-                  <a href={c.repo.htmlUrl} target="_blank" rel="noreferrer" className="text-text-2 hover:underline">
-                    {c.repo.fullName}
-                  </a>
+                  <span className={`badge ${c.status === "active" ? "badge-success" : c.status === "provisioning" ? "badge-warning" : "badge-muted"}`}>
+                    {STATUS_LABELS[c.status]}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-text-2">
+                  {PLAN_LABELS[c.plan]}
+                  {Number(c.monthlyFee) > 0 && <div className="text-xs text-text-3">{fmtMnt(c.monthlyFee)} ₮/сар</div>}
                 </td>
                 <td className="px-4 py-2.5">
-                  <HealthBadge health={c.health} behind={c.behind} latest={latest?.tagName ?? null} />
-                  {c.appUrl && (
-                    <div className="text-xs text-text-3">
-                      <a href={c.appUrl} target="_blank" rel="noreferrer" className="hover:underline">{c.appUrl}</a>
-                    </div>
-                  )}
+                  <HealthBadge health={health} behind={behind} latest={latest?.tagName ?? null} />
                 </td>
                 <td className="px-4 py-2.5">
-                  <RunBadge run={c.lastSync} />
-                  {c.lastSync && <div className="text-xs text-text-3">{fmtDate(c.lastSync.createdAt)}</div>}
+                  <RunBadge run={lastSync} />
+                  {lastSync && <div className="text-xs text-text-3">{fmtDate(lastSync.createdAt)}</div>}
                 </td>
-                <td className="px-4 py-2.5 text-text-2">{fmtDate(c.repo.createdAt)}</td>
+                <td className="px-4 py-2.5 text-text-2">{fmtDate(c.createdAt.toISOString())}</td>
               </tr>
             ))}
           </tbody>
@@ -119,13 +118,14 @@ export default async function DashboardPage({
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" | "danger" }) {
+function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "success" | "warning" | "danger" }) {
   const color =
     tone === "warning" ? "text-warning" : tone === "danger" ? "text-danger" : tone === "success" ? "text-success" : "";
   return (
     <div className="card px-4 py-3">
       <div className="text-xs text-text-3">{label}</div>
       <div className={`text-2xl font-semibold ${color}`}>{value}</div>
+      {sub && <div className="text-xs text-text-3">{sub}</div>}
     </div>
   );
 }

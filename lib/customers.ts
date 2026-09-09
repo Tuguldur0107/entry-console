@@ -1,9 +1,13 @@
-// Харилцагчийн нэгтгэсэн төлөв — GitHub + харилцагчийн app-ийн /api/health.
+// Харилцагчийн нэгтгэсэн төлөв: DB (бизнесийн бүртгэл) + GitHub (repo,
+// sync run) + харилцагчийн app-ийн /api/health.
+import { desc, eq } from "drizzle-orm";
+
 import { config } from "./config";
+import { db } from "./db";
+import { customerEvents, customers, type Customer, type CustomerEvent } from "./db/schema";
 import {
   fetchHealth,
   getLatestRelease,
-  getVariable,
   listCollaborators,
   listCustomerRepos,
   listOpenPulls,
@@ -16,10 +20,8 @@ import {
 } from "./github";
 
 export interface CustomerSummary {
-  repo: CustomerRepo;
-  displayName: string;
-  appUrl: string | null;
-  seededRef: string | null;
+  customer: Customer;
+  repo: CustomerRepo | null;
   health: Health | null;
   lastSync: WorkflowRun | null;
   /** Core-ийн сүүлийн release-ээс хоцорсон эсэх (health.version-оор). */
@@ -30,6 +32,9 @@ export interface CustomerDetail extends CustomerSummary {
   collaborators: Collaborator[];
   syncRuns: WorkflowRun[];
   openPulls: { title: string; htmlUrl: string; number: number }[];
+  events: CustomerEvent[];
+  /** Repo хараахан үүсээгүй үед — core дээрх provision run */
+  provisionRun: WorkflowRun | null;
 }
 
 function normalizeVersion(v: string | null): string | null {
@@ -43,19 +48,63 @@ export function isBehind(health: Health | null, latest: Release | null): boolean
   return current !== target;
 }
 
-async function summarize(repo: CustomerRepo, latest: Release | null): Promise<CustomerSummary> {
-  const [displayName, appUrl, seededRef, syncRuns] = await Promise.all([
-    getVariable(repo.fullName, "ENTRY_DISPLAY_NAME"),
-    getVariable(repo.fullName, "ENTRY_APP_URL"),
-    getVariable(repo.fullName, "ENTRY_SEEDED_REF"),
-    listWorkflowRuns(repo.fullName, "upstream-sync.yml", 1),
+export async function logEvent(customerId: string, type: string, message: string): Promise<void> {
+  await db.insert(customerEvents).values({ customerId, type, message });
+}
+
+/**
+ * DB ба GitHub-ийг тааруулна:
+ *  - provisioning төлөвтэй харилцагчийн repo үүссэн бол → active
+ *  - DB-д байхгүй `entry-customer` repo (гараар/Actions-оор үүссэн) → бүртгэнэ
+ */
+async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Customer[]> {
+  const byRepo = new Map(repos.map((r) => [r.fullName.toLowerCase(), r]));
+  const updated: Customer[] = [];
+  for (const row of rows) {
+    const repo = byRepo.get(row.githubRepo.toLowerCase());
+    if (repo && row.status === "provisioning") {
+      const [next] = await db
+        .update(customers)
+        .set({ status: "active", updatedAt: new Date() })
+        .where(eq(customers.id, row.id))
+        .returning();
+      await logEvent(row.id, "activated", `Repo үүслээ: ${repo.fullName}`);
+      updated.push(next);
+    } else updated.push(row);
+  }
+  const known = new Set(rows.map((r) => r.githubRepo.toLowerCase()));
+  for (const repo of repos) {
+    if (known.has(repo.fullName.toLowerCase())) continue;
+    const [created] = await db
+      .insert(customers)
+      .values({
+        slug: repo.slug,
+        displayName: repo.description?.replace(/^Entry Accounting — /, "") || repo.slug,
+        githubRepo: repo.fullName,
+        status: "active",
+      })
+      .onConflictDoNothing({ target: customers.slug })
+      .returning();
+    if (created) {
+      await logEvent(created.id, "provisioned", `GitHub-аас бүртгэв: ${repo.fullName}`);
+      updated.push(created);
+    }
+  }
+  return updated;
+}
+
+async function summarize(
+  customer: Customer,
+  repo: CustomerRepo | null,
+  latest: Release | null
+): Promise<CustomerSummary> {
+  const [syncRuns, health] = await Promise.all([
+    repo ? listWorkflowRuns(repo.fullName, "upstream-sync.yml", 1) : Promise.resolve([]),
+    fetchHealth(customer.appUrl),
   ]);
-  const health = await fetchHealth(appUrl);
   return {
+    customer,
     repo,
-    displayName: displayName ?? repo.description?.replace(/^Entry Accounting — /, "") ?? repo.slug,
-    appUrl,
-    seededRef,
     health,
     lastSync: syncRuns[0] ?? null,
     behind: isBehind(health, latest),
@@ -67,26 +116,53 @@ export async function loadDashboard(): Promise<{
   customers: CustomerSummary[];
   provisioning: WorkflowRun[];
 }> {
-  const [latest, repos, provisionRuns] = await Promise.all([
+  const [latest, rows, repos, provisionRuns] = await Promise.all([
     getLatestRelease(),
+    db.select().from(customers).orderBy(desc(customers.createdAt)),
     listCustomerRepos(),
     listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10),
   ]);
-  const customers = await Promise.all(repos.map((repo) => summarize(repo, latest)));
-  // Дуусаагүй (queued / in_progress) provision run-ууд — "үүсгэж байна" мөр.
-  const provisioning = provisionRuns.filter((r) => r.status !== "completed");
-  return { latest, customers, provisioning };
+  const reconciled = await reconcile(rows, repos);
+  const byRepo = new Map(repos.map((r) => [r.fullName.toLowerCase(), r]));
+  const summaries = await Promise.all(
+    reconciled.map((c) => summarize(c, byRepo.get(c.githubRepo.toLowerCase()) ?? null, latest))
+  );
+  summaries.sort((a, b) => b.customer.createdAt.getTime() - a.customer.createdAt.getTime());
+  return {
+    latest,
+    customers: summaries,
+    provisioning: provisionRuns.filter((r) => r.status !== "completed"),
+  };
+}
+
+export async function getCustomerBySlug(slug: string): Promise<Customer | null> {
+  const row = await db.query.customers.findFirst({ where: eq(customers.slug, slug) });
+  return row ?? null;
 }
 
 export async function loadCustomerDetail(
-  repo: CustomerRepo
+  customer: Customer
 ): Promise<{ latest: Release | null; customer: CustomerDetail }> {
-  const latest = await getLatestRelease();
-  const [summary, collaborators, syncRuns, openPulls] = await Promise.all([
-    summarize(repo, latest),
-    listCollaborators(repo.fullName),
-    listWorkflowRuns(repo.fullName, "upstream-sync.yml", 5),
-    listOpenPulls(repo.fullName),
+  const [latest, repos] = await Promise.all([getLatestRelease(), listCustomerRepos()]);
+  const repo = repos.find((r) => r.fullName.toLowerCase() === customer.githubRepo.toLowerCase()) ?? null;
+  const [reconciled] = await reconcile([customer], repo ? [repo] : []);
+  const [summary, collaborators, syncRuns, openPulls, events, provisionRuns] = await Promise.all([
+    summarize(reconciled, repo, latest),
+    repo ? listCollaborators(repo.fullName) : Promise.resolve([]),
+    repo ? listWorkflowRuns(repo.fullName, "upstream-sync.yml", 5) : Promise.resolve([]),
+    repo ? listOpenPulls(repo.fullName) : Promise.resolve([]),
+    db
+      .select()
+      .from(customerEvents)
+      .where(eq(customerEvents.customerId, customer.id))
+      .orderBy(desc(customerEvents.createdAt))
+      .limit(20),
+    repo ? Promise.resolve([]) : listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10),
   ]);
-  return { latest, customer: { ...summary, collaborators, syncRuns, openPulls } };
+  const provisionRun =
+    provisionRuns.find((r) => r.displayTitle.endsWith(`: ${customer.slug}`)) ?? null;
+  return {
+    latest,
+    customer: { ...summary, collaborators, syncRuns, openPulls, events, provisionRun },
+  };
 }

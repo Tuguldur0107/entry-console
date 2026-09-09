@@ -2,6 +2,8 @@
 builder = "RAILPACK"
 
 [deploy]
+# Schema-г deploy бүрд DB-тэй тааруулна (drizzle-kit push, идемпотент).
+preDeployCommand = "npm run db:push"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
