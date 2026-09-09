@@ -99,7 +99,7 @@ async function summarize(
   latest: Release | null
 ): Promise<CustomerSummary> {
   const [syncRuns, health] = await Promise.all([
-    repo ? listWorkflowRuns(repo.fullName, "upstream-sync.yml", 1) : Promise.resolve([]),
+    repo ? listWorkflowRuns(repo.fullName, "upstream-sync.yml", 1).catch(() => []) : Promise.resolve([]),
     fetchHealth(customer.appUrl),
   ]);
   return {
@@ -111,18 +111,32 @@ async function summarize(
   };
 }
 
+/** GitHub дуудлага унавал (token эрх, сүлжээ) самбар унахгүй — алдааг буцаана. */
+async function safe<T>(fallback: T, fn: () => Promise<T>, errors: string[]): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+    return fallback;
+  }
+}
+
 export async function loadDashboard(): Promise<{
   latest: Release | null;
   customers: CustomerSummary[];
   provisioning: WorkflowRun[];
+  /** GitHub талын алдаанууд — UI дээр banner */
+  githubErrors: string[];
 }> {
+  const githubErrors: string[] = [];
   const [latest, rows, repos, provisionRuns] = await Promise.all([
-    getLatestRelease(),
+    safe<Release | null>(null, getLatestRelease, githubErrors),
     db.select().from(customers).orderBy(desc(customers.createdAt)),
-    listCustomerRepos(),
-    listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10),
+    safe<CustomerRepo[]>([], listCustomerRepos, githubErrors),
+    safe<WorkflowRun[]>([], () => listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10), githubErrors),
   ]);
-  const reconciled = await reconcile(rows, repos);
+  // GitHub repo жагсаалт авч чадаагүй бол reconcile хийхгүй (буруугаар "үүсээгүй" гэж дүгнэхгүй).
+  const reconciled = githubErrors.length > 0 ? rows : await reconcile(rows, repos);
   const byRepo = new Map(repos.map((r) => [r.fullName.toLowerCase(), r]));
   const summaries = await Promise.all(
     reconciled.map((c) => summarize(c, byRepo.get(c.githubRepo.toLowerCase()) ?? null, latest))
@@ -132,6 +146,7 @@ export async function loadDashboard(): Promise<{
     latest,
     customers: summaries,
     provisioning: provisionRuns.filter((r) => r.status !== "completed"),
+    githubErrors: Array.from(new Set(githubErrors)),
   };
 }
 

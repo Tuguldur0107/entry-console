@@ -12,7 +12,7 @@ const fmtMnt = (v: string) => new Intl.NumberFormat("en-US").format(Number(v));
 
 export default async function DashboardPage() {
   await requireSession();
-  const { latest, customers, provisioning } = await loadDashboard();
+  const { latest, customers, provisioning, githubErrors } = await loadDashboard();
   const active = customers.filter((c) => c.customer.status === "active");
   const behindCount = customers.filter((c) => c.behind).length;
   const downCount = customers.filter((c) => c.health && !c.health.ok).length;
@@ -37,6 +37,18 @@ export default async function DashboardPage() {
         </div>
         <Link href="/customers/new" className="btn btn-primary">+ Харилцагч нэмэх</Link>
       </div>
+
+      {githubErrors.length > 0 && (
+        <div className="card border-danger bg-danger-bg p-4 text-sm text-danger">
+          <strong>GitHub холболтын алдаа</strong> — GITHUB_TOKEN-ийн эрх хүрэхгүй эсвэл буруу байна
+          (classic PAT: repo, workflow, admin:org; эзэн {config.owner}).
+          <ul className="mt-1 list-disc pl-5">
+            {githubErrors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${customers.length}`} />
