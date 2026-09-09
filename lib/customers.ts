@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 
 import { config } from "./config";
 import { db } from "./db";
+import { ensureSchema } from "./db/ensure";
 import { customerEvents, customers, type Customer, type CustomerEvent } from "./db/schema";
 import {
   fetchHealth,
@@ -129,6 +130,7 @@ export async function loadDashboard(): Promise<{
   githubErrors: string[];
 }> {
   const githubErrors: string[] = [];
+  await ensureSchema();
   const [latest, rows, repos, provisionRuns] = await Promise.all([
     safe<Release | null>(null, getLatestRelease, githubErrors),
     db.select().from(customers).orderBy(desc(customers.createdAt)),
@@ -151,6 +153,7 @@ export async function loadDashboard(): Promise<{
 }
 
 export async function getCustomerBySlug(slug: string): Promise<Customer | null> {
+  await ensureSchema();
   const row = await db.query.customers.findFirst({ where: eq(customers.slug, slug) });
   return row ?? null;
 }
