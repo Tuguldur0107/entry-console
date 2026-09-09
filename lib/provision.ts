@@ -5,6 +5,7 @@ import { getCustomerBySlug, logEvent } from "./customers";
 import { db } from "./db";
 import { CUSTOMER_PLANS, customers, type Customer, type CustomerPlan } from "./db/schema";
 import { dispatchWorkflow, getCustomerRepo, getDefaultBranch } from "./github";
+import { railwayConfigured } from "./railway";
 
 export interface ProvisionInput {
   slug: string;
@@ -18,6 +19,8 @@ export interface ProvisionInput {
   ref?: string;
   plan?: string;
   monthlyFee?: string;
+  /** Repo бэлэн болмогц Railway-д автоматаар deploy (Railway тохируулсан үед) */
+  autoDeploy?: boolean | string;
 }
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
@@ -32,6 +35,7 @@ export async function provision(input: ProvisionInput): Promise<Customer> {
   const ref = (input.ref ?? "").trim() || "main";
   const plan = ((input.plan ?? "pilot").trim() || "pilot") as CustomerPlan;
   const monthlyFee = (input.monthlyFee ?? "0").trim() || "0";
+  const autoDeploy = railwayConfigured() && (input.autoDeploy === true || input.autoDeploy === "on" || input.autoDeploy === "true");
 
   if (!SLUG_RE.test(slug)) throw new ProvisionError("Код зөвхөн жижиг латин үсэг, тоо, зураас (2–31 тэмдэгт)");
   if (!displayName) throw new ProvisionError("Харилцагчийн нэр хоосон байна");
@@ -67,8 +71,9 @@ export async function provision(input: ProvisionInput): Promise<Customer> {
       plan,
       monthlyFee,
       status: "provisioning",
+      autoDeploy,
     })
     .returning();
-  await logEvent(created.id, "provisioned", `Repo үүсгэх ажил эхэллээ (core ${ref})`);
+  await logEvent(created.id, "provisioned", `Repo үүсгэх ажил эхэллээ (core ${ref})${autoDeploy ? " · repo бэлэн болмогц Railway deploy" : ""}`);
   return created;
 }

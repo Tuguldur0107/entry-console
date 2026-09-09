@@ -43,6 +43,16 @@ export function ensureSchema(): Promise<void> {
           "created_at" timestamptz not null default now()
         )
       `);
+      // Railway автомат deploy-ийн баганууд (v2.1) — байгаа DB-д нэмнэ
+      for (const ddl of [
+        `alter table "customers" add column if not exists "auto_deploy" boolean not null default false`,
+        `alter table "customers" add column if not exists "railway_project_id" text`,
+        `alter table "customers" add column if not exists "railway_environment_id" text`,
+        `alter table "customers" add column if not exists "railway_service_id" text`,
+        `alter table "customers" add column if not exists "railway_postgres_service_id" text`,
+        `alter table "customers" add column if not exists "deploy_error" text`,
+      ])
+        await db.execute(sql.raw(ddl));
     })().catch((error) => {
       ensured = null; // дараагийн хүсэлтэд дахин оролдоно
       throw error;

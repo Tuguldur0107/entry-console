@@ -6,6 +6,7 @@ import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/ensure";
 import { checkOwnerAccess, coreWorkflowExists, getCoreActionsConfig, getLatestRelease, getTokenInfo } from "@/lib/github";
+import { railwayCheck, railwayMode } from "@/lib/railway";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Тохиргоо, шалгалт" };
@@ -27,8 +28,9 @@ async function runChecks(): Promise<Check[]> {
   const need = config.ownerType === "org" ? ["repo", "workflow", "admin:org"] : ["repo", "workflow"];
   const fixToken = "GitHub → Settings → Developer settings → Tokens (classic) → token дээр дарж scope чагтлаад Update token";
 
-  const [dbResult, tokenResult, releaseResult, workflowResult, coreConfig] = await Promise.all([
+  const [dbResult, railwayResult, tokenResult, releaseResult, workflowResult, coreConfig] = await Promise.all([
     dbCheck(),
+    railwayCheck().then((r) => ({ r, error: null as string | null })).catch((e) => ({ r: null, error: msg(e) })),
     getTokenInfo().then((t) => ({ t, error: null as string | null })).catch((e) => ({ t: null, error: msg(e) })),
     getLatestRelease().then((rel) => ({ rel, error: null as string | null })).catch((e) => ({ rel: null, error: msg(e) })),
     coreWorkflowExists("provision-customer.yml").then((exists) => ({ exists, error: null as string | null })).catch((e) => ({ exists: false, error: msg(e) })),
@@ -79,6 +81,15 @@ async function runChecks(): Promise<Check[]> {
     const ownerOk = effectiveOwner.toLowerCase() === config.owner.toLowerCase();
     checks.push({ ok: ownerOk, title: "Variable CUSTOMER_OWNER (core)", detail: coreConfig.variables.CUSTOMER_OWNER ? `= ${coreConfig.variables.CUSTOMER_OWNER}` : `тавиагүй → workflow ${effectiveOwner} дээр repo үүсгэнэ`, fix: ownerOk ? undefined : `entry-accounting → Settings → Secrets and variables → Actions → Variables → CUSTOMER_OWNER = ${config.owner}` });
   }
+
+  // Railway (сонголтоор — тохируулаагүй бол deploy гараар)
+  const fixRailway = "Railway → project → Settings → Tokens → project token үүсгээд entry-console Variables: RAILWAY_PROJECT_TOKEN, RAILWAY_PROJECT_ID (+ RAILWAY_ENVIRONMENT_ID)";
+  if (railwayResult.error)
+    checks.push({ ok: false, title: "Railway (автомат deploy)", detail: railwayResult.error, fix: fixRailway });
+  else if (!railwayResult.r || railwayResult.r.mode === "off")
+    checks.push({ ok: null, title: "Railway (автомат deploy)", detail: "тохируулаагүй — харилцагчийн deploy-г гараар хийнэ", fix: fixRailway });
+  else
+    checks.push({ ok: true, title: `Railway (${railwayResult.r.mode === "project" ? "project token" : "account token"})`, detail: `${railwayResult.r.detail} · Railway-ийн GitHub app ${config.owner} org-д хандах эрхтэй байх ёстой (Railway → Account → GitHub)` });
   return checks;
 }
 
@@ -105,7 +116,7 @@ export default async function SettingsPage() {
       </Section>
       <Section title="Орчны тохиргоо" sub="Railway → entry-console → Variables">
         <dl className="grid gap-2 text-sm sm:grid-cols-[200px_1fr]">
-          {[["GITHUB_OWNER", config.owner], ["GITHUB_OWNER_TYPE", config.ownerType], ["CORE_REPO", config.coreRepo], ["Харилцагчийн repo topic", config.customerTopic], ["Repo нэрийн угтвар", config.repoPrefix]].map(([k, v]) => (
+          {[["GITHUB_OWNER", config.owner], ["GITHUB_OWNER_TYPE", config.ownerType], ["CORE_REPO", config.coreRepo], ["Харилцагчийн repo topic", config.customerTopic], ["Repo нэрийн угтвар", config.repoPrefix], ["Railway горим", railwayMode()], ["RAILWAY_PROJECT_ID", process.env.RAILWAY_PROJECT_ID ?? "—"]].map(([k, v]) => (
             <div key={k} className="contents"><dt className="text-text-3">{k}</dt><dd className="mono">{v}</dd></div>
           ))}
         </dl>
@@ -114,7 +125,8 @@ export default async function SettingsPage() {
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-text-2">
           <li>«Харилцагч нэмэх» → бүртгэл DB-д, core repo-ийн <span className="mono">provision-customer.yml</span> dispatch.</li>
           <li>Workflow: <span className="mono">{config.owner}/entry-&lt;код&gt;</span> repo, core түүх push, Actions permission, secret, урилга.</li>
-          <li>Самбар repo-г олмогц харилцагч «Идэвхтэй» болно; Deploy хаяг өгвөл хувилбар хянагдана.</li>
+          <li>Самбар repo-г олмогц харилцагч «Идэвхтэй» болно; автомат deploy сонгосон бол Railway дээр <span className="mono">entry-&lt;код&gt;</span> + <span className="mono">entry-&lt;код&gt;-db</span> service үүсч хаяг бүртгэгдэнэ.</li>
+          <li>Харилцагчийн repo-д commit орох бүрд Railway автоматаар дахин build хийнэ; console-оос «Дахин deploy» ч болно.</li>
           <li>Core-д шинэ release гарахад «Бүгдийг vX.Y.Z болгох» → хоцорсон харилцагч бүрд upstream-sync PR.</li>
         </ol>
       </Section>

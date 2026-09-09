@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { checkPassword, createSession, destroySession, requireSession } from "./auth";
 import { getCustomerBySlug, logEvent } from "./customers";
 import { provision } from "./provision";
+import { DeployError, deployNow, redeployNow } from "./deploy";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -18,6 +19,7 @@ import {
 import {
   dispatchWorkflow,
   fetchHealth,
+  getCustomerRepo,
   getDefaultBranch,
   getLatestRelease,
   GitHubError,
@@ -28,7 +30,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -66,6 +68,7 @@ export async function provisionCustomer(
       ref: text(formData, "ref"),
       plan: text(formData, "plan"),
       monthlyFee: text(formData, "monthly_fee"),
+      autoDeploy: text(formData, "auto_deploy"),
     });
     slug = created.slug;
   } catch (error) {
@@ -226,6 +229,47 @@ export async function syncAllCustomers(): Promise<ActionResult> {
   revalidatePath("/");
   const note = `${started} харилцагчид ${target} sync эхэллээ${skipped ? ` · ${skipped} аль хэдийн шинэ` : ""}${failed.length ? `; алдаа: ${failed.join(", ")}` : ""}`;
   return started > 0 || failed.length === 0 ? { ok: true, message: note } : { ok: false, error: failed.join("; ") };
+}
+
+/** Railway дээр service хос (app + Postgres) үүсгэж deploy эхлүүлнэ. */
+export async function deployCustomerToRailway(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    const repo = await getCustomerRepo(slug);
+    const next = await deployNow(customer, !!repo?.pushedAt);
+    revalidatePath(`/customers/${slug}`);
+    revalidatePath("/");
+    return { ok: true, message: `Deploy эхэллээ → ${next.appUrl} (build 3–5 мин)` };
+  } catch (error) {
+    revalidatePath(`/customers/${slug}`);
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Байгаа Railway service-ийг дахин deploy. */
+export async function redeployCustomer(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    await redeployNow(customer);
+    revalidatePath(`/customers/${slug}`);
+    return { ok: true, message: "Дахин deploy эхэллээ (3–5 мин)" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Repo бэлэн болмогц автоматаар deploy хийх тохиргоо. */
+export async function setAutoDeploy(slug: string, on: boolean): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  await db.update(customers).set({ autoDeploy: on, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+  revalidatePath(`/customers/${slug}`);
+  return { ok: true, message: on ? "Repo бэлэн болмогц deploy хийнэ" : "Автомат deploy унтарлаа" };
 }
 
 /** Төлөв хурдан солих (Идэвхтэй ↔ Түр зогсоох ↔ Архив). */

@@ -3,7 +3,7 @@
 // барих, төлбөрийн багц). Төлбөр тооцооны хүснэгтүүд (нэхэмжлэх, төлөлт)
 // дараагийн шатанд энд нэмэгдэнэ — customers.id-д уягдана.
 import { relations } from "drizzle-orm";
-import { date, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const CUSTOMER_STATUSES = ["provisioning", "active", "suspended", "archived"] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
@@ -34,6 +34,14 @@ export const customers = pgTable("customers", {
   billingStartsAt: date("billing_starts_at"),
   seededRef: text("seeded_ref"),
   notes: text("notes"),
+  /** Repo бэлэн болмогц Railway-д автоматаар deploy хийх эсэх */
+  autoDeploy: boolean("auto_deploy").notNull().default(false),
+  railwayProjectId: text("railway_project_id"),
+  railwayEnvironmentId: text("railway_environment_id"),
+  railwayServiceId: text("railway_service_id"),
+  railwayPostgresServiceId: text("railway_postgres_service_id"),
+  /** Сүүлийн deploy оролдлогын алдаа (амжилттай бол null) */
+  deployError: text("deploy_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

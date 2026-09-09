@@ -6,8 +6,11 @@ import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import {
   addNote,
+  deployCustomerToRailway,
   inviteUser,
   provisionCustomer,
+  redeployCustomer,
+  setAutoDeploy,
   setCustomerStatus,
   syncAllCustomers,
   syncCustomer,
@@ -36,7 +39,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-export function ProvisionForm({ latestTag, owner }: { latestTag: string | null; owner: string }) {
+export function ProvisionForm({ latestTag, owner, railwayOn }: { latestTag: string | null; owner: string; railwayOn: boolean }) {
   const [result, action, pending] = useActionState(provisionCustomer, null);
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
@@ -89,12 +92,21 @@ export function ProvisionForm({ latestTag, owner }: { latestTag: string | null; 
           <Field label="GitHub хэрэглэгчид (Write эрх)" hint="Таслалаар · харилцагчийн IT / vibe coder · нягтланд хэрэггүй">
             <input name="github_users" className="input" placeholder="bat-erdene, saraa-dev" />
           </Field>
-          <Field label="Deploy хаяг" hint="Railway deploy-ийн дараа ч нэмж болно">
-            <input name="app_url" className="input" type="url" placeholder="https://govi.entry.mn" />
-          </Field>
           <Field label="Эхлүүлэх core хувилбар" hint="Release tag (зөвлөж байна) эсвэл main">
             <input name="ref" className="input mono" defaultValue={latestTag ?? "main"} />
           </Field>
+          {railwayOn ? (
+            <Field label="Хостинг" hint="Railway дээр app + Postgres service үүсч, хаяг автоматаар бүртгэгдэнэ (~5 мин)">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
+                <input type="checkbox" name="auto_deploy" defaultChecked className="h-4 w-4 accent-[var(--ea-primary)]" />
+                Repo бэлэн болмогц Railway-д автоматаар deploy
+              </label>
+            </Field>
+          ) : (
+            <Field label="Deploy хаяг" hint="Гараар deploy хийсний дараа ч нэмж болно · Railway тохируулбал автоматаар">
+              <input name="app_url" className="input" type="url" placeholder="https://govi.entry.mn" />
+            </Field>
+          )}
         </div>
       </section>
 
@@ -198,6 +210,39 @@ export function StatusActions({ slug, status }: { slug: string; status: Customer
       {status === "suspended" && <button className="btn btn-sm" disabled={pending} onClick={go("active", "Дахин идэвхжүүлэх үү?")}>Идэвхжүүлэх</button>}
       {status !== "archived" && <button className="btn btn-sm btn-danger" disabled={pending} onClick={go("archived", "Архивлах уу? Repo устахгүй, самбараас нуугдана.")}>Архивлах</button>}
       {status === "archived" && <button className="btn btn-sm" disabled={pending} onClick={go("active", "Архиваас сэргээх үү?")}>Сэргээх</button>}
+      <Notice result={result} />
+    </div>
+  );
+}
+
+export function DeployPanel({ slug, deployed, autoDeploy, blocker, deployError }: { slug: string; deployed: boolean; autoDeploy: boolean; blocker: string | null; deployError: string | null }) {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const run = (fn: () => Promise<ActionResult>) => () => start(async () => { const r = await fn(); setResult(r); if (r.ok) router.refresh(); });
+  return (
+    <div className="space-y-3">
+      {deployError && <p className="notice notice-danger"><strong>Сүүлийн оролдлого амжилтгүй.</strong> {deployError}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        {!deployed ? (
+          <button className="btn btn-primary" disabled={pending || !!blocker} title={blocker ?? undefined}
+            onClick={run(() => deployCustomerToRailway(slug))}>
+            <Icons.rocket className="h-4 w-4" /> {pending ? "Үүсгэж байна…" : deployError ? "Дахин оролдох" : "Railway-д deploy"}
+          </button>
+        ) : (
+          <button className="btn" disabled={pending} onClick={() => { if (!confirm("Сүүлийн commit-оор дахин deploy хийх үү?")) return; run(() => redeployCustomer(slug))(); }}>
+            <Icons.refresh className="h-4 w-4" /> {pending ? "…" : "Дахин deploy"}
+          </button>
+        )}
+        {!deployed && (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-2">
+            <input type="checkbox" checked={autoDeploy} disabled={pending} className="h-4 w-4 accent-[var(--ea-primary)]"
+              onChange={(e) => run(() => setAutoDeploy(slug, e.target.checked))()} />
+            Repo бэлэн болмогц автоматаар
+          </label>
+        )}
+      </div>
+      {blocker && !deployed && <p className="hint">{blocker}</p>}
       <Notice result={result} />
     </div>
   );

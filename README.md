@@ -32,5 +32,12 @@ Service `entry-console` (GitHub repo) + Postgres `Entry console DB`. Variables: 
 (Postgres-ийн reference), `CONSOLE_PASSWORD`, `AUTH_SECRET`, `GITHUB_TOKEN`, `GITHUB_OWNER`,
 `GITHUB_OWNER_TYPE` (+ `CORE_REPO`). `railway.toml`: preDeploy `db:push`, healthcheck `/api/health`.
 
+**Харилцагчийн автомат deploy:** `RAILWAY_PROJECT_TOKEN` + `RAILWAY_PROJECT_ID` (+ `RAILWAY_ENVIRONMENT_ID`)
+өгвөл харилцагч бүрд тэр project дотор `entry-<код>` (GitHub repo, healthcheck `/api/health`,
+preDeploy `db:push`) + `entry-<код>-db` (postgres:16 + volume) service үүсч, `DATABASE_URL`,
+`AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` тавигдаж, domain нь харилцагчийн Deploy хаяг болно
+(`lib/railway.ts`, `lib/deploy.ts`). Нэрээр байгаа service-ийг дахин ашигладаг тул унасан
+оролдлогыг аюулгүй давтана. Railway-ийн GitHub app `GITHUB_OWNER` org-д хандах эрхтэй байх ёстой.
+
 Core repo талд: Settings → Secrets → `PROVISION_TOKEN`, `UPSTREAM_READ_TOKEN`
 (`.github/workflows/provision-customer.yml` толгойн тайлбар).

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CopyButton, CustomerEditForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
+import { CopyButton, CustomerEditForm, DeployPanel, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
+import { deployBlocker } from "@/lib/deploy";
+import { railwayConfigured, railwayProjectUrl } from "@/lib/railway";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
   const c = customer.customer;
   const repo = customer.repo;
   const repoUrl = repo?.htmlUrl ?? `https://github.com/${c.githubRepo}`;
+  const deployed = !!c.railwayServiceId;
+  const railwayUrl = c.railwayProjectId ? railwayProjectUrl(c.railwayProjectId, c.railwayServiceId ?? undefined) : null;
 
   return (
     <div className="space-y-5">
@@ -66,6 +70,21 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
         <div className="space-y-4 lg:col-span-2">
           <Section title="Бүртгэл, гэрээ, төлбөр" sub="Энд хадгалагдана; repo-д нөлөөлөхгүй (Deploy хаягаас бусад)">
             <CustomerEditForm customer={c} />
+          </Section>
+
+          <Section
+            title="Хостинг (Railway)"
+            sub={deployed ? "App + Postgres service Railway дээр · commit push хийгдэх бүрд автоматаар deploy хийгдэнэ" : railwayConfigured() ? "Нэг товчоор app + Postgres service үүсч, хаяг бүртгэгдэнэ" : "Railway тохируулаагүй — Тохиргоо хуудсыг үзнэ үү"}
+            right={railwayUrl ? <a href={railwayUrl} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost"><Icons.external className="h-4 w-4" /> Railway</a> : undefined}
+          >
+            {deployed && (
+              <dl className="mb-3 space-y-2 text-sm">
+                <Row k="Сүүлийн deployment" v={<DeployStatus status={customer.railway?.status ?? null} at={customer.railway?.createdAt ?? null} />} />
+                <Row k="Хаяг" v={c.appUrl ? <a href={c.appUrl} target="_blank" rel="noreferrer" className="hover:underline">{c.appUrl.replace(/^https?:\/\//, "")}</a> : "—"} />
+                <Row k="Service" v={<span className="mono">entry-{c.slug} · entry-{c.slug}-db</span>} />
+              </dl>
+            )}
+            <DeployPanel slug={slug} deployed={deployed} autoDeploy={c.autoDeploy} blocker={deployed ? null : deployBlocker(c, !!repo?.pushedAt)} deployError={c.deployError} />
           </Section>
 
           <Section title="Core шинэчлэлт" sub={`Харилцагчийн repo дээр upstream-sync.yml ажиллаж PR нээнэ · core ${latest?.tagName ?? "—"}`}>
@@ -141,6 +160,25 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
         </div>
       </div>
     </div>
+  );
+}
+
+const DEPLOY_TONE: Record<string, string> = {
+  SUCCESS: "badge-success", BUILDING: "badge-warning", DEPLOYING: "badge-warning", INITIALIZING: "badge-warning", QUEUED: "badge-warning", WAITING: "badge-warning",
+  FAILED: "badge-danger", CRASHED: "badge-danger", REMOVED: "badge-muted", SLEEPING: "badge-muted", SKIPPED: "badge-muted",
+};
+const DEPLOY_LABEL: Record<string, string> = {
+  SUCCESS: "Амжилттай", BUILDING: "Build хийж байна", DEPLOYING: "Deploy хийж байна", INITIALIZING: "Эхэлж байна", QUEUED: "Дараалалд", WAITING: "Хүлээж байна",
+  FAILED: "Амжилтгүй", CRASHED: "Унасан", REMOVED: "Устгагдсан", SLEEPING: "Унтаа", SKIPPED: "Алгассан",
+};
+
+function DeployStatus({ status, at }: { status: string | null; at: string | null }) {
+  if (!status) return <span className="text-text-3">мэдээлэл алга</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`badge ${DEPLOY_TONE[status] ?? "badge-muted"}`}>{DEPLOY_LABEL[status] ?? status}</span>
+      {at && <span className="text-xs text-text-3">{fmtAgo(at)}</span>}
+    </span>
   );
 }
 
