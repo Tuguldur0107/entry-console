@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/actions";
 import {
   addNote,
   deployCustomerToRailway,
+  destroyCustomerAction,
   inviteUser,
   provisionCustomer,
   redeployCustomer,
@@ -243,6 +244,44 @@ export function DeployPanel({ slug, deployed, connected, autoDeploy, blocker, de
         )}
       </div>
       {blocker && (!deployed || !connected) && <p className="hint">{blocker}</p>}
+      <Notice result={result} />
+    </div>
+  );
+}
+
+export function DestroyForm({ slug, items, warnings }: { slug: string; items: string[]; warnings: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  if (!open)
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-2">Railway service (апп + өгөгдлийн сан, өгөгдөл нь хамт), GitHub repo, console-ийн бүртгэл бүгд устна. Буцаах боломжгүй.</p>
+        <button className="btn btn-sm btn-danger" onClick={() => setOpen(true)}>Бүрэн устгах…</button>
+      </div>
+    );
+  return (
+    <div className="space-y-3">
+      <div className="notice notice-danger">
+        <strong>Дараах зүйлс бүрмөсөн устна:</strong>
+        <ul className="mt-1 list-disc pl-5">
+          {items.map((it) => <li key={it}>{it}</li>)}
+        </ul>
+      </div>
+      {warnings.map((w) => <p key={w} className="notice notice-warning">{w}</p>)}
+      <label className="block">
+        <span className="label">Баталгаажуулахын тулд кодыг бичнэ: <span className="mono">{slug}</span></span>
+        <input className="input mono" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={slug} autoFocus />
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn btn-danger" disabled={pending || typed.trim() !== slug}
+          onClick={() => start(async () => { const r = await destroyCustomerAction(slug, typed); setResult(r); if (r.ok) router.refresh(); else router.refresh(); })}>
+          {pending ? "Устгаж байна…" : "Тийм, бүгдийг устга"}
+        </button>
+        <button className="btn btn-ghost" disabled={pending} onClick={() => { setOpen(false); setTyped(""); setResult(null); }}>Болих</button>
+      </div>
       <Notice result={result} />
     </div>
   );

@@ -41,5 +41,10 @@ preDeploy `db:push`) + `entry-<код>-db` (postgres:16 + volume) service үүс
 Зөвхөн `RAILWAY_PROJECT_TOKEN` өгвөл service/DB/domain үүснэ, харин repo холболтыг Railway дээр
 гараар хийнэ (project token GitHub контекстгүй) — самбар «repo холбогдоогүй» гэж анхааруулна.
 
+**Бүрэн устгах:** харилцагчийн хуудасны «Аюултай бүс» (кодыг бичиж баталгаажуулна) эсвэл
+`DELETE /api/customers/<slug>?confirm=<slug>` — Railway app + Postgres (volume-тэй), GitHub repo,
+бүртгэл устна (`lib/teardown.ts`). GitHub repo устгахад token-д `delete_repo` scope, Railway-д
+account token хэрэгтэй; дутуу устсан бол мөр «Архив» + тэмдэглэлтэй үлдэж дахин оролдож болно.
+
 Core repo талд: Settings → Secrets → `PROVISION_TOKEN`, `UPSTREAM_READ_TOKEN`
 (`.github/workflows/provision-customer.yml` толгойн тайлбар).

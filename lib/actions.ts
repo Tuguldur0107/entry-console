@@ -8,6 +8,7 @@ import { checkPassword, createSession, destroySession, requireSession } from "./
 import { getCustomerBySlug, logEvent } from "./customers";
 import { provision } from "./provision";
 import { DeployError, deployNow, redeployNow } from "./deploy";
+import { destroyCustomer, TeardownError } from "./teardown";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -30,7 +31,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -270,6 +271,26 @@ export async function setAutoDeploy(slug: string, on: boolean): Promise<ActionRe
   await db.update(customers).set({ autoDeploy: on, updatedAt: new Date() }).where(eq(customers.id, customer.id));
   revalidatePath(`/customers/${slug}`);
   return { ok: true, message: on ? "Repo бэлэн болмогц deploy хийнэ" : "Автомат deploy унтарлаа" };
+}
+
+/**
+ * Харилцагчийг БҮРЭН устгана (Railway app + DB, GitHub repo, бүртгэл).
+ * Баталгаажуулалт: хэрэглэгч кодыг нь яг бичсэн байх ёстой.
+ */
+export async function destroyCustomerAction(slug: string, confirmSlug: string): Promise<ActionResult> {
+  await requireSession();
+  if (confirmSlug.trim() !== slug) return { ok: false, error: "Баталгаажуулахын тулд кодыг яг бичнэ" };
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    await destroyCustomer(customer);
+  } catch (error) {
+    revalidatePath(`/customers/${slug}`);
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath("/");
+  revalidatePath("/customers");
+  redirect("/customers?deleted=" + encodeURIComponent(slug));
 }
 
 /** Төлөв хурдан солих (Идэвхтэй ↔ Түр зогсоох ↔ Архив). */

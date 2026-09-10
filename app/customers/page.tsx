@@ -10,9 +10,9 @@ export const metadata = { title: "Харилцагчид" };
 
 const FILTERS: [string, string][] = [["all", "Бүгд"], ["active", "Идэвхтэй"], ["provisioning", "Үүсгэж байна"], ["suspended", "Түр зогссон"], ["archived", "Архив"]];
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; deleted?: string }> }) {
   await requireSession();
-  const { q, status = "all" } = await searchParams;
+  const { q, status = "all", deleted } = await searchParams;
   const { latest, customers } = await loadDashboard();
   const rows = filterCustomers(customers, q, status);
   const csv = ["slug,name,register_no,contact,email,phone,status,plan,monthly_fee,repo,app_url,created_at",
@@ -20,6 +20,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-4">
+      {deleted && <p className="notice notice-success">«{deleted}» харилцагч бүрэн устлаа — Railway service, GitHub repo, бүртгэл.</p>}
       <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл`}>
         <a href={`data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + csv)}`} download="entry-customers.csv" className="btn btn-sm"><Icons.download className="h-4 w-4" /> CSV</a>
         <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>

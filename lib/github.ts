@@ -150,6 +150,11 @@ export async function setVariable(fullName: string, name: string, value: string)
   }
 }
 
+/** Repo-г бүрмөсөн устгана — classic token-д `delete_repo` scope шаардана. */
+export async function deleteRepo(fullName: string): Promise<void> {
+  await gh<void>(`/repos/${fullName}`, { method: "DELETE" });
+}
+
 export async function listCollaborators(fullName: string): Promise<Collaborator[]> {
   const [members, invites] = await Promise.all([
     gh<{ login: string; html_url: string; role_name?: string; permissions?: Record<string, boolean> }[]>(

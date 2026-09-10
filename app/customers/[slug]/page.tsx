@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CopyButton, CustomerEditForm, DeployPanel, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
+import { CopyButton, CustomerEditForm, DeployPanel, DestroyForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
 import { deployBlocker } from "@/lib/deploy";
 import { railwayConfigured, railwayProjectUrl } from "@/lib/railway";
+import { teardownPlan } from "@/lib/teardown";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
   const repo = customer.repo;
   const repoUrl = repo?.htmlUrl ?? `https://github.com/${c.githubRepo}`;
   const deployed = !!c.railwayServiceId;
+  const plan = await teardownPlan(c, !!repo);
+  const destroyItems = [
+    ...(plan.railwayApp ? [`Railway service «entry-${c.slug}» (апп, domain, хувьсагчид)`] : []),
+    ...(plan.railwayDb ? [`Railway service «entry-${c.slug}-db» — Postgres, volume-ийн БҮХ өгөгдөл`] : []),
+    ...(plan.githubRepo ? [`GitHub repo ${c.githubRepo} (код, түүх, collaborator)`] : []),
+    "Console-ийн бүртгэл, түүх, тэмдэглэл",
+  ];
   const railwayUrl = c.railwayProjectId ? railwayProjectUrl(c.railwayProjectId, c.railwayServiceId ?? undefined) : null;
 
   return (
@@ -157,6 +165,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
 
           <Section title="Төлөв">
             <StatusActions slug={slug} status={c.status} />
+          </Section>
+
+          <Section title="Аюултай бүс" sub="Гэрээ дууссан, эсвэл туршилтын харилцагчийг цэвэрлэх">
+            <DestroyForm slug={slug} items={destroyItems} warnings={plan.warnings} />
           </Section>
         </div>
       </div>

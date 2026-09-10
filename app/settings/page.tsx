@@ -53,6 +53,11 @@ async function runChecks(): Promise<Check[]> {
     else if (missing.length > 0)
       checks.push({ ok: false, title: "GitHub token", detail: `@${t.login} · scope дутуу: ${missing.join(", ")}` + (t.scopes.length ? ` (байгаа: ${t.scopes.join(", ")})` : " (scope огт сонгоогүй)"), fix: fixToken });
     else checks.push({ ok: true, title: "GitHub token", detail: `@${t.login} · ${t.scopes.join(", ")}` });
+    checks.push(
+        t.scopes.includes("delete_repo")
+          ? { ok: true, title: "Харилцагч устгах (delete_repo scope)", detail: "repo устгах эрхтэй" }
+          : { ok: null, title: "Харилцагч устгах (delete_repo scope)", detail: "token-д delete_repo алга — «Бүрэн устгах» үед GitHub repo устахгүй (Railway хэсэг устна)", fix: "Tokens (classic) → token → delete_repo чагтлаад Update token" }
+      );
   }
 
   // Owner

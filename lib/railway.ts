@@ -339,6 +339,35 @@ export async function redeployService(serviceId: string, environmentId: string):
   );
 }
 
+/** Service-д холбоотой volume-ууд (устгахын өмнө). */
+async function listServiceVolumes(projectId: string, serviceId: string): Promise<string[]> {
+  const d = await gql<{ project: { volumes: { edges: { node: { id: string; volumeInstances: { edges: { node: { serviceId: string | null } }[] } } }[] } } }>(
+    `query($id: String!) { project(id: $id) { volumes { edges { node { id volumeInstances { edges { node { serviceId } } } } } } } }`,
+    { id: projectId }
+  );
+  return d.project.volumes.edges
+    .filter((e) => e.node.volumeInstances.edges.some((v) => v.node.serviceId === serviceId))
+    .map((e) => e.node.id);
+}
+
+/**
+ * Service-ийг volume-тэй нь хамт бүрмөсөн устгана. Account/workspace token
+ * шаардана (project token устгах эрхгүй). Байхгүй service-ийг алгасна.
+ */
+export async function deleteService(projectId: string, serviceId: string): Promise<void> {
+  if (!railwayCanConnectRepo())
+    throw new RailwayError("Project token service устгаж чадахгүй — RAILWAY_TOKEN (account token) хэрэгтэй");
+  const volumes = await listServiceVolumes(projectId, serviceId).catch(() => [] as string[]);
+  for (const volumeId of volumes)
+    await gql(`mutation($id: String!) { volumeDelete(volumeId: $id) }`, { id: volumeId });
+  try {
+    await gql(`mutation($id: String!) { serviceDelete(id: $id) }`, { id: serviceId });
+  } catch (error) {
+    // Аль хэдийн устсан бол амжилттай гэж үзнэ
+    if (!/not found|does not exist/i.test(error instanceof Error ? error.message : "")) throw error;
+  }
+}
+
 export function railwayProjectUrl(projectId: string, serviceId?: string): string {
   return serviceId ? `https://railway.com/project/${projectId}/service/${serviceId}` : `https://railway.com/project/${projectId}`;
 }
