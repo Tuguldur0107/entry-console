@@ -114,7 +114,7 @@ async function resolveProject(slug: string, displayName: string, log: DeployLog)
 
 // ── Deploy урсгал ──────────────────────────────────────────────────────────
 
-interface ExistingService {
+export interface ExistingService {
   id: string;
   name: string;
   domain: string | null;
@@ -122,7 +122,7 @@ interface ExistingService {
 }
 
 /** Project доторх service-үүд (нэрээр дахин ашиглах — deploy дундаа унасан бол давхардуулахгүй). */
-async function listProjectServices(projectId: string, environmentId: string): Promise<ExistingService[]> {
+export async function listProjectServices(projectId: string, environmentId: string): Promise<ExistingService[]> {
   const d = await gql<{
     project: {
       services: {

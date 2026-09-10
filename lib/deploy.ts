@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { logEvent } from "./customers";
 import { db } from "./db";
 import { customers, type Customer } from "./db/schema";
-import { connectRepo, deployCustomer, railwayCanConnectRepo, railwayConfigured, redeployService } from "./railway";
+import { connectRepo, deployCustomer, listProjectServices, railwayCanConnectRepo, railwayConfigured, redeployService } from "./railway";
 
 export class DeployError extends Error {
   constructor(message: string, public readonly customer?: Customer) {
@@ -86,6 +86,45 @@ export async function deployNow(customer: Customer, repoSeeded: boolean): Promis
     await logEvent(customer.id, "deploy", `Railway deploy амжилтгүй: ${detail}`);
     throw new DeployError(detail);
   }
+}
+
+/**
+ * Service бэлэн боловч DB-д «repo холбогдоогүй» гэсэн харилцагчдын бодит төлөвийг
+ * Railway-аас шалгана — Railway dashboard дээр гараар холбосон бол DB-г засна.
+ * Алдаа залгина (самбар унахгүй).
+ */
+export async function syncRepoConnections(rows: Customer[]): Promise<Customer[]> {
+  const pending = rows.filter((r) => r.railwayServiceId && !r.railwayRepoConnected && r.railwayProjectId && r.railwayEnvironmentId);
+  if (pending.length === 0 || !railwayConfigured()) return rows;
+  const byProject = new Map<string, Promise<Map<string, boolean>>>();
+  const out: Customer[] = [];
+  for (const row of rows) {
+    if (!pending.includes(row)) {
+      out.push(row);
+      continue;
+    }
+    const key = `${row.railwayProjectId}:${row.railwayEnvironmentId}`;
+    if (!byProject.has(key))
+      byProject.set(
+        key,
+        listProjectServices(row.railwayProjectId!, row.railwayEnvironmentId!)
+          .then((list) => new Map(list.map((s) => [s.id, s.connected])))
+          .catch(() => new Map<string, boolean>())
+      );
+    const connected = (await byProject.get(key)!).get(row.railwayServiceId!) === true;
+    if (!connected) {
+      out.push(row);
+      continue;
+    }
+    const [next] = await db
+      .update(customers)
+      .set({ railwayRepoConnected: true, deployError: null, updatedAt: new Date() })
+      .where(eq(customers.id, row.id))
+      .returning();
+    await logEvent(row.id, "deploy", `Repo Railway дээр холбогдсон байна → ${row.appUrl} (build явж байна)`);
+    out.push(next ?? row);
+  }
+  return out;
 }
 
 /** Байгаа service-ийг дахин deploy (сүүлийн commit-оор). Repo холбогдоогүй бол эхлээд холбоно. */

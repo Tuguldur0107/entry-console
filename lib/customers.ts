@@ -19,7 +19,7 @@ import {
   type Release,
   type WorkflowRun,
 } from "./github";
-import { deployNow } from "./deploy";
+import { deployNow, syncRepoConnections } from "./deploy";
 import { latestDeployment, railwayCanConnectRepo, railwayConfigured, type RailwayStatus } from "./railway";
 
 export interface CustomerSummary {
@@ -66,7 +66,7 @@ export async function logEvent(customerId: string, type: string, message: string
 async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Customer[]> {
   const byRepo = new Map(repos.map((r) => [r.fullName.toLowerCase(), r]));
   const updated: Customer[] = [];
-  for (const row of rows) {
+  for (const row of await syncRepoConnections(rows)) {
     const repo = byRepo.get(row.githubRepo.toLowerCase());
     // pushedAt байхгүй = хоосон repo (seed амжаагүй) — идэвхтэй гэж тооцохгүй.
     if (repo && repo.pushedAt && row.status === "provisioning") {
