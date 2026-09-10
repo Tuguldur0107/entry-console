@@ -62,22 +62,26 @@ export async function railwayCheck(): Promise<{ mode: RailwayMode; detail: strin
   const mode = railwayMode();
   if (mode === "off") return { mode, detail: "тохируулаагүй", canConnectRepo: false };
   const projectId = process.env.RAILWAY_PROJECT_ID;
-  let who = "";
+  let who: string;
   if (mode === "account") {
-    const d = await gql<{ me: { email: string } }>(`{ me { email } }`);
-    who = `${d.me.email} (account token)`;
+    // Workspace (team) token-д `me` байхгүй — хувийн token бол email, үгүй бол workspace token гэж үзнэ
+    who = await gql<{ me: { email: string } }>(`{ me { email } }`)
+      .then((d) => `${d.me.email} (account token)`)
+      .catch(() => "workspace token");
   } else {
     const d = await gql<{ projectToken: { projectId: string } }>(`{ projectToken { projectId } }`);
     who = "project token";
     if (d.projectToken.projectId !== projectId) throw new RailwayError("RAILWAY_PROJECT_ID token-ийн project-той таарахгүй");
   }
   if (projectId) {
+    // Энэ query token project-д хандах эрхтэй эсэхийг бодитоор шалгана
     const p = await gql<{ project: { name: string; services: { edges: { node: { name: string } }[] } } }>(
       `query($id: String!) { project(id: $id) { name services { edges { node { name } } } } }`,
       { id: projectId }
     );
     return { mode, canConnectRepo: mode === "account", detail: `${who} · project «${p.project.name}» (${p.project.services.edges.length} service) — харилцагч бүр энэ project дотор service хос` };
   }
+  if (who === "workspace token") throw new RailwayError("Workspace token-д RAILWAY_PROJECT_ID заавал (шинэ project үүсгэхэд workspace id хэрэгтэй)");
   return { mode, canConnectRepo: true, detail: `${who} — харилцагч бүрд тусдаа project` };
 }
 
