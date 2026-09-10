@@ -12,9 +12,9 @@ import { destroyCustomer, TeardownError } from "./teardown";
 import { applyStatusTransition, LifecycleError } from "./lifecycle";
 import { attachBackupsAndDomain } from "./deploy";
 import { runMonitor } from "./monitor";
-import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes, ensureMonitorService, upsertVariables } from "./railway";
+import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
-import { randomBytes } from "node:crypto";
+import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -37,7 +37,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -409,18 +409,10 @@ export async function runMonitorNow(): Promise<ActionResult> {
  */
 export async function enableMonitoring(): Promise<ActionResult> {
   await requireSession();
-  const { projectId, environmentId, serviceId, serviceName, publicUrl } = config.self;
-  if (!projectId || !environmentId || !serviceId || !serviceName || !publicUrl)
-    return { ok: false, error: "Console Railway дээр ажиллахгүй байна (RAILWAY_* хувьсагч алга)" };
   try {
-    let note = "";
-    if (!process.env.CONSOLE_API_KEY) {
-      await upsertVariables(projectId, environmentId, serviceId, { CONSOLE_API_KEY: randomBytes(24).toString("base64url") }, false);
-      note = " · CONSOLE_API_KEY үүсгэж console дахин deploy хийж байна (1–2 мин)";
-    }
-    const r = await ensureMonitorService({ projectId, environmentId, consoleServiceName: serviceName, consoleUrl: publicUrl });
+    const r = await enableMonitoringCore();
     revalidatePath("/settings");
-    return { ok: true, message: (r.created ? "Хяналтын cron service үүслээ (5 мин тутам)" : "Хяналтын cron service аль хэдийн бий") + note };
+    return { ok: true, message: r.message };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
