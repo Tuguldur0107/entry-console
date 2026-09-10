@@ -339,33 +339,198 @@ export async function redeployService(serviceId: string, environmentId: string):
   );
 }
 
-/** Service-д холбоотой volume-ууд (устгахын өмнө). */
-async function listServiceVolumes(projectId: string, serviceId: string): Promise<string[]> {
-  const d = await gql<{ project: { volumes: { edges: { node: { id: string; volumeInstances: { edges: { node: { serviceId: string | null } }[] } } }[] } } }>(
-    `query($id: String!) { project(id: $id) { volumes { edges { node { id volumeInstances { edges { node { serviceId } } } } } } } }`,
+export interface VolumeInstanceInfo {
+  id: string;
+  volumeId: string;
+  serviceId: string | null;
+  sizeMB: number;
+}
+
+/** Environment доторх volume instance-ууд (service-д холбоотой эсвэл салангид). */
+export async function listVolumeInstances(projectId: string, environmentId: string): Promise<VolumeInstanceInfo[]> {
+  const d = await gql<{ project: { environments: { edges: { node: { id: string; volumeInstances: { edges: { node: { id: string; volumeId: string; serviceId: string | null; currentSizeMB: number } }[] } } }[] } } }>(
+    `query($id: String!) { project(id: $id) { environments { edges { node { id volumeInstances { edges { node { id volumeId serviceId currentSizeMB } } } } } } } }`,
     { id: projectId }
   );
-  return d.project.volumes.edges
-    .filter((e) => e.node.volumeInstances.edges.some((v) => v.node.serviceId === serviceId))
-    .map((e) => e.node.id);
+  const env = d.project.environments.edges.find((e) => e.node.id === environmentId)?.node;
+  return (env?.volumeInstances.edges ?? []).map((e) => ({ id: e.node.id, volumeId: e.node.volumeId, serviceId: e.node.serviceId, sizeMB: e.node.currentSizeMB }));
+}
+
+export async function volumeInstanceForService(projectId: string, environmentId: string, serviceId: string): Promise<string | null> {
+  const list = await listVolumeInstances(projectId, environmentId);
+  return list.find((v) => v.serviceId === serviceId)?.id ?? null;
 }
 
 /**
  * Service-ийг volume-тэй нь хамт бүрмөсөн устгана. Account/workspace token
  * шаардана (project token устгах эрхгүй). Байхгүй service-ийг алгасна.
  */
-export async function deleteService(projectId: string, serviceId: string): Promise<void> {
+export async function deleteService(projectId: string, environmentId: string, serviceId: string): Promise<void> {
   if (!railwayCanConnectRepo())
     throw new RailwayError("Project token service устгаж чадахгүй — RAILWAY_TOKEN (account token) хэрэгтэй");
-  const volumes = await listServiceVolumes(projectId, serviceId).catch(() => [] as string[]);
-  for (const volumeId of volumes)
-    await gql(`mutation($id: String!) { volumeDelete(volumeId: $id) }`, { id: volumeId });
+  const volumes = await listVolumeInstances(projectId, environmentId).catch(() => [] as VolumeInstanceInfo[]);
+  for (const v of volumes.filter((v) => v.serviceId === serviceId))
+    await gql(`mutation($id: String!) { volumeDelete(volumeId: $id) }`, { id: v.volumeId });
   try {
     await gql(`mutation($id: String!) { serviceDelete(id: $id) }`, { id: serviceId });
   } catch (error) {
     // Аль хэдийн устсан бол амжилттай гэж үзнэ
     if (!/not found|does not exist/i.test(error instanceof Error ? error.message : "")) throw error;
   }
+}
+
+/** Ямар ч service-д холбоогүй (салангид) volume-уудыг устгана — зардал хэмнэнэ. */
+export async function deleteOrphanVolumes(projectId: string, environmentId: string): Promise<number> {
+  const list = await listVolumeInstances(projectId, environmentId);
+  let n = 0;
+  for (const v of list.filter((v) => !v.serviceId)) {
+    await gql(`mutation($id: String!) { volumeDelete(volumeId: $id) }`, { id: v.volumeId });
+    n += 1;
+  }
+  return n;
+}
+
+// ── Нөөцлөлт (Railway volume backup) ────────────────────────────────────────
+
+export type BackupKind = "DAILY" | "WEEKLY" | "MONTHLY";
+export const DEFAULT_BACKUP_KINDS: BackupKind[] = ["DAILY", "WEEKLY"];
+
+export async function setBackupSchedule(volumeInstanceId: string, kinds: BackupKind[]): Promise<void> {
+  await gql(
+    `mutation($id: String!, $kinds: [VolumeInstanceBackupScheduleKind!]!) { volumeInstanceBackupScheduleUpdate(volumeInstanceId: $id, kinds: $kinds) }`,
+    { id: volumeInstanceId, kinds }
+  );
+}
+
+export interface BackupStatus {
+  kinds: string[];
+  count: number;
+  lastBackupAt: string | null;
+}
+
+export async function getBackupStatus(volumeInstanceId: string): Promise<BackupStatus> {
+  const d = await gql<{ volumeInstanceBackupScheduleList: { kind: string }[]; volumeInstanceBackupList: { createdAt: string }[] }>(
+    `query($id: String!) {
+       volumeInstanceBackupScheduleList(volumeInstanceId: $id) { kind }
+       volumeInstanceBackupList(volumeInstanceId: $id) { createdAt }
+     }`,
+    { id: volumeInstanceId }
+  );
+  const dates = d.volumeInstanceBackupList.map((b) => b.createdAt).sort();
+  return { kinds: d.volumeInstanceBackupScheduleList.map((s) => s.kind), count: dates.length, lastBackupAt: dates[dates.length - 1] ?? null };
+}
+
+export async function createBackup(volumeInstanceId: string, name: string): Promise<void> {
+  await gql(`mutation($id: String!, $name: String!) { volumeInstanceBackupCreate(volumeInstanceId: $id, name: $name) }`, { id: volumeInstanceId, name });
+}
+
+// ── Custom domain ───────────────────────────────────────────────────────────
+
+export interface DnsRecord {
+  hostlabel: string;
+  fqdn: string;
+  recordType: string;
+  requiredValue: string;
+  currentValue: string | null;
+  status: string;
+}
+
+export interface CustomDomainInfo {
+  id: string;
+  domain: string;
+  verified: boolean;
+  certificateStatus: string | null;
+  dns: DnsRecord[];
+}
+
+const DOMAIN_FIELDS = `id domain status { verified certificateStatus dnsRecords { hostlabel fqdn recordType requiredValue currentValue status } }`;
+type DomainNode = { id: string; domain: string; status: { verified: boolean; certificateStatus: string | null; dnsRecords: DnsRecord[] } };
+const toDomainInfo = (n: DomainNode): CustomDomainInfo => ({ id: n.id, domain: n.domain, verified: !!n.status?.verified, certificateStatus: n.status?.certificateStatus ?? null, dns: n.status?.dnsRecords ?? [] });
+
+export async function createCustomDomain(projectId: string, environmentId: string, serviceId: string, domain: string): Promise<CustomDomainInfo> {
+  const d = await gql<{ customDomainCreate: DomainNode }>(
+    `mutation($input: CustomDomainCreateInput!) { customDomainCreate(input: $input) { ${DOMAIN_FIELDS} } }`,
+    { input: { projectId, environmentId, serviceId, domain } }
+  );
+  return toDomainInfo(d.customDomainCreate);
+}
+
+export async function getCustomDomain(id: string, projectId: string): Promise<CustomDomainInfo> {
+  const d = await gql<{ customDomain: DomainNode }>(`query($id: String!, $p: String!) { customDomain(id: $id, projectId: $p) { ${DOMAIN_FIELDS} } }`, { id, p: projectId });
+  return toDomainInfo(d.customDomain);
+}
+
+export async function deleteCustomDomain(id: string): Promise<void> {
+  await gql(`mutation($id: String!) { customDomainDelete(id: $id) }`, { id });
+}
+
+// ── Зогсоох / сэргээх ──────────────────────────────────────────────────────
+
+const RUNNING = new Set(["SUCCESS", "DEPLOYING", "BUILDING", "INITIALIZING", "QUEUED", "WAITING", "SLEEPING"]);
+
+/** Идэвхтэй deployment-ийг устгана — service зогсоно (volume, variable хэвээр). */
+export async function stopService(projectId: string, environmentId: string, serviceId: string): Promise<boolean> {
+  const latest = await latestDeployment(projectId, environmentId, serviceId);
+  if (!latest || !RUNNING.has(latest.status)) return false;
+  await gql(`mutation($id: String!) { deploymentRemove(id: $id) }`, { id: latest.deploymentId });
+  return true;
+}
+
+/** Service-ийн variable-уудыг нэмж/солино. */
+export async function upsertVariables(projectId: string, environmentId: string, serviceId: string, variables: Record<string, string>, skipDeploys = true): Promise<void> {
+  await gql(
+    `mutation($input: VariableCollectionUpsertInput!) { variableCollectionUpsert(input: $input) }`,
+    { input: { projectId, environmentId, serviceId, skipDeploys, variables } }
+  );
+}
+
+// ── Хяналтын cron service (console-ийн /api/cron/check-ийг 5 мин тутам дуудна) ─
+
+export const MONITOR_SERVICE_NAME = "entry-console-monitor";
+
+export async function findServiceByName(projectId: string, environmentId: string, name: string): Promise<ExistingService | null> {
+  const list = await listProjectServices(projectId, environmentId);
+  return list.find((s) => s.name === name) ?? null;
+}
+
+/**
+ * curl image-тэй cron service үүсгэнэ. CONSOLE_API_KEY-г console service-ийн
+ * variable-аас reference хийнэ (утга нь Railway-аас гарахгүй).
+ */
+export async function ensureMonitorService(input: { projectId: string; environmentId: string; consoleServiceName: string; consoleUrl: string; schedule?: string }): Promise<{ serviceId: string; created: boolean }> {
+  const existing = await findServiceByName(input.projectId, input.environmentId, MONITOR_SERVICE_NAME);
+  if (existing) return { serviceId: existing.id, created: false };
+  const created = await gql<{ serviceCreate: { id: string } }>(
+    `mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`,
+    {
+      input: {
+        projectId: input.projectId,
+        name: MONITOR_SERVICE_NAME,
+        source: { image: "curlimages/curl:8.10.1" },
+        variables: {
+          CONSOLE_URL: input.consoleUrl,
+          CONSOLE_API_KEY: "${{" + input.consoleServiceName + ".CONSOLE_API_KEY}}",
+        },
+      },
+    }
+  );
+  const serviceId = created.serviceCreate.id;
+  await gql(
+    `mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
+       serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
+     }`,
+    {
+      serviceId,
+      environmentId: input.environmentId,
+      input: {
+        cronSchedule: input.schedule ?? "*/5 * * * *",
+        startCommand: 'sh -c \'curl -fsS -m 240 -X POST -H "Authorization: Bearer $CONSOLE_API_KEY" "$CONSOLE_URL/api/cron/check"\'',
+        restartPolicyType: "NEVER",
+      },
+    }
+  );
+  await redeployService(serviceId, input.environmentId);
+  return { serviceId, created: true };
 }
 
 export function railwayProjectUrl(projectId: string, serviceId?: string): string {

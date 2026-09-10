@@ -6,7 +6,11 @@ import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/ensure";
 import { checkOwnerAccess, coreWorkflowExists, getCoreActionsConfig, getLatestRelease, getTokenInfo } from "@/lib/github";
-import { railwayCheck, railwayMode } from "@/lib/railway";
+import { findServiceByName, MONITOR_SERVICE_NAME, railwayCheck, railwayMode } from "@/lib/railway";
+import { lastMonitorRun } from "@/lib/monitor";
+import { alertChannels } from "@/lib/notify";
+import { MonitorButtons } from "@/components/forms";
+import { fmtAgo } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Тохиргоо, шалгалт" };
@@ -103,7 +107,14 @@ async function runChecks(): Promise<Check[]> {
 
 export default async function SettingsPage() {
   await requireSession();
-  const checks = await runChecks();
+  const [checks, last, cron] = await Promise.all([
+    runChecks(),
+    lastMonitorRun().catch(() => null),
+    config.self.projectId && config.self.environmentId && railwayMode() !== "off"
+      ? findServiceByName(config.self.projectId, config.self.environmentId, MONITOR_SERVICE_NAME).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const channels = alertChannels();
   const bad = checks.filter((c) => c.ok === false).length;
   return (
     <div className="max-w-3xl space-y-4">
@@ -122,9 +133,19 @@ export default async function SettingsPage() {
           ))}
         </div>
       </Section>
+      <Section title="Хяналт, мэдэгдэл" sub="Railway cron service 5 мин тутам /api/cron/check дуудна: health, deployment, backup, domain, авто sync">
+        <div className="mb-3 space-y-1 text-sm">
+          <div className="flex gap-2"><span className={`check-dot ${cron ? "check-ok" : "check-warn"}`}>{cron ? "✓" : "!"}</span><span>Cron service <span className="mono">{MONITOR_SERVICE_NAME}</span>: {cron ? "ажиллаж байна" : "үүсгээгүй — доорх товчоор нэг удаа"}</span></div>
+          <div className="flex gap-2"><span className={`check-dot ${process.env.CONSOLE_API_KEY ? "check-ok" : "check-warn"}`}>{process.env.CONSOLE_API_KEY ? "✓" : "!"}</span><span>CONSOLE_API_KEY: {process.env.CONSOLE_API_KEY ? "тавигдсан (cron + REST нэвтрэлт)" : "алга — идэвхжүүлэхэд автоматаар үүснэ"}</span></div>
+          <div className="flex gap-2"><span className={`check-dot ${channels.length ? "check-ok" : "check-warn"}`}>{channels.length ? "✓" : "!"}</span><span>Мэдэгдлийн суваг: {channels.length ? channels.join(", ") : "алга — TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID эсвэл ALERT_WEBHOOK_URL (Slack/Discord) тавина"}</span></div>
+          <div className="flex gap-2"><span className={`check-dot ${last ? "check-ok" : "check-warn"}`}>{last ? "✓" : "!"}</span><span>Сүүлийн шалгалт: {last ? `${fmtAgo(last.at)} · ${last.checked} харилцагч · унасан ${last.down.length} · merge ${last.merged.length} · sync ${last.synced.length}${last.errors.length ? ` · алдаа ${last.errors.length}` : ""}` : "хараахан ажиллаагүй"}</span></div>
+          {last && last.errors.length > 0 && <ul className="mono ml-7 list-disc pl-4 text-xs text-text-2">{last.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+        </div>
+        <MonitorButtons hasCron={!!cron} hasKey={!!process.env.CONSOLE_API_KEY} />
+      </Section>
       <Section title="Орчны тохиргоо" sub="Railway → entry-console → Variables">
         <dl className="grid gap-2 text-sm sm:grid-cols-[200px_1fr]">
-          {[["GITHUB_OWNER", config.owner], ["GITHUB_OWNER_TYPE", config.ownerType], ["CORE_REPO", config.coreRepo], ["Харилцагчийн repo topic", config.customerTopic], ["Repo нэрийн угтвар", config.repoPrefix], ["Railway горим", railwayMode()], ["RAILWAY_PROJECT_ID", process.env.RAILWAY_PROJECT_ID ?? "—"]].map(([k, v]) => (
+          {[["GITHUB_OWNER", config.owner], ["GITHUB_OWNER_TYPE", config.ownerType], ["CORE_REPO", config.coreRepo], ["Харилцагчийн repo topic", config.customerTopic], ["Repo нэрийн угтвар", config.repoPrefix], ["Railway горим", railwayMode()], ["RAILWAY_PROJECT_ID", process.env.RAILWAY_PROJECT_ID ?? "—"], ["CUSTOMER_BASE_DOMAIN", config.baseDomain ?? "— (харилцагч бүрд <код>.<domain> автоматаар)"], ["Мэдэгдэл", channels.join(", ") || "—"]].map(([k, v]) => (
             <div key={k} className="contents"><dt className="text-text-3">{k}</dt><dd className="mono">{v}</dd></div>
           ))}
         </dl>

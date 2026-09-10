@@ -22,4 +22,16 @@ export const config = {
   /** Харилцагчийн repo-г таних topic (provision-customer.yml тавьдаг). */
   customerTopic: "entry-customer",
   repoPrefix: "entry-",
+  /** Харилцагч бүрд <slug>.<baseDomain> custom domain автоматаар (сонголтоор) */
+  baseDomain: (process.env.CUSTOMER_BASE_DOMAIN ?? "").trim().replace(/^\.+/, "") || null,
+  telegram: process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID ? { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID } : null,
+  alertWebhookUrl: process.env.ALERT_WEBHOOK_URL || null,
+  /** Console өөрөө Railway дээр — өөрийн service (хяналтын cron-д хэрэгтэй) */
+  self: {
+    projectId: process.env.RAILWAY_PROJECT_ID || null,
+    environmentId: process.env.RAILWAY_ENVIRONMENT_ID || null,
+    serviceId: process.env.RAILWAY_SERVICE_ID || null,
+    serviceName: process.env.RAILWAY_SERVICE_NAME || null,
+    publicUrl: process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
+  },
 };

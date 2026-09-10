@@ -3,7 +3,7 @@
 // барих, төлбөрийн багц). Төлбөр тооцооны хүснэгтүүд (нэхэмжлэх, төлөлт)
 // дараагийн шатанд энд нэмэгдэнэ — customers.id-д уягдана.
 import { relations } from "drizzle-orm";
-import { boolean, date, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const CUSTOMER_STATUSES = ["provisioning", "active", "suspended", "archived"] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
@@ -44,6 +44,27 @@ export const customers = pgTable("customers", {
   railwayRepoConnected: boolean("railway_repo_connected").notNull().default(false),
   /** Сүүлийн deploy оролдлогын алдаа (амжилттай бол null) */
   deployError: text("deploy_error"),
+  /** Postgres volume instance (backup хуваарь, жагсаалт энд) */
+  railwayVolumeInstanceId: text("railway_volume_instance_id"),
+  /** "DAILY,WEEKLY" — Railway volume backup хуваарь */
+  backupSchedule: text("backup_schedule"),
+  lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
+  /** Custom domain (govi.entry.mn) — Railway custom domain */
+  customDomain: text("custom_domain"),
+  customDomainId: text("custom_domain_id"),
+  /** DNS CNAME-д бичих утга */
+  dnsTarget: text("dns_target"),
+  customDomainVerified: boolean("custom_domain_verified").notNull().default(false),
+  /** Хяналт: сүүлийн /api/health үр дүн (null = шалгаагүй) */
+  healthOk: boolean("health_ok"),
+  healthCheckedAt: timestamp("health_checked_at", { withTimezone: true }),
+  healthChangedAt: timestamp("health_changed_at", { withTimezone: true }),
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+  lastDeployStatus: text("last_deploy_status"),
+  /** Core шинэчлэлтийг автоматаар: sync PR нээх + шалгалт давсан бол merge */
+  autoSync: boolean("auto_sync").notNull().default(false),
+  /** Sync-ийн саад (conflict, шалгалт унасан) — анхаарах зүйлсэд */
+  syncNote: text("sync_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -58,6 +79,13 @@ export const customerEvents = pgTable("customer_events", {
   type: text("type").notNull(),
   message: text("message").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Console-ийн дотоод төлөв (хяналтын сүүлийн ажиллагаа г.м.) */
+export const consoleState = pgTable("console_state", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const customersRelations = relations(customers, ({ many }) => ({

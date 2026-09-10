@@ -6,8 +6,15 @@ import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import {
   addNote,
+  attachExtras,
+  backupNow,
+  cleanupOrphanVolumes,
   deployCustomerToRailway,
   destroyCustomerAction,
+  enableMonitoring,
+  runMonitorNow,
+  setAutoSync,
+  setCustomDomainAction,
   inviteUser,
   provisionCustomer,
   redeployCustomer,
@@ -208,7 +215,7 @@ export function StatusActions({ slug, status }: { slug: string; status: Customer
   return (
     <div className="flex flex-wrap items-center gap-2">
       {status === "active" && <button className="btn btn-sm" disabled={pending} onClick={go("suspended", "Түр зогсоох уу? (repo, deploy хэвээр үлдэнэ)")}>Түр зогсоох</button>}
-      {status === "suspended" && <button className="btn btn-sm" disabled={pending} onClick={go("active", "Дахин идэвхжүүлэх үү?")}>Идэвхжүүлэх</button>}
+      {status === "suspended" && <button className="btn btn-sm" disabled={pending} onClick={go("active", "Дахин идэвхжүүлэх үү? Railway дээр DB, апп дахин асна (2–4 мин).")}>Идэвхжүүлэх</button>}
       {status !== "archived" && <button className="btn btn-sm btn-danger" disabled={pending} onClick={go("archived", "Архивлах уу? Repo устахгүй, самбараас нуугдана.")}>Архивлах</button>}
       {status === "archived" && <button className="btn btn-sm" disabled={pending} onClick={go("active", "Архиваас сэргээх үү?")}>Сэргээх</button>}
       <Notice result={result} />
@@ -281,6 +288,68 @@ export function DestroyForm({ slug, items, warnings }: { slug: string; items: st
           {pending ? "Устгаж байна…" : "Тийм, бүгдийг устга"}
         </button>
         <button className="btn btn-ghost" disabled={pending} onClick={() => { setOpen(false); setTyped(""); setResult(null); }}>Болих</button>
+      </div>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+function useAction() {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const run = (fn: () => Promise<ActionResult>) => () => start(async () => { const r = await fn(); setResult(r); if (r.ok) router.refresh(); });
+  return { result, pending, run };
+}
+
+export function AutoSyncToggle({ slug, on }: { slug: string; on: boolean }) {
+  const { result, pending, run } = useAction();
+  return (
+    <div className="space-y-1">
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" checked={on} disabled={pending} className="h-4 w-4 accent-[var(--ea-primary)]" onChange={(e) => run(() => setAutoSync(slug, e.target.checked))()} />
+        Авто sync: шинэ release гармагц PR нээж, шалгалт (tsc/lint/test) давсан бол автоматаар merge → Railway deploy
+      </label>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+export function BackupPanel({ slug, hasVolume, hasDomainSlot }: { slug: string; hasVolume: boolean; hasDomainSlot: boolean }) {
+  const { result, pending, run } = useAction();
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {!hasVolume || hasDomainSlot ? <button className="btn btn-sm" disabled={pending} onClick={run(() => attachExtras(slug))}>{pending ? "…" : hasVolume ? "Domain үүсгэх" : "Backup идэвхжүүлэх"}</button> : null}
+        {hasVolume && <button className="btn btn-sm" disabled={pending} onClick={run(() => backupNow(slug))}>{pending ? "…" : "Backup одоо"}</button>}
+      </div>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+export function DomainForm({ slug, current }: { slug: string; current: string | null }) {
+  const bound = setCustomDomainAction.bind(null, slug);
+  const [result, action, pending] = useActionState(bound, null);
+  return (
+    <form action={action} className="space-y-2">
+      <div className="flex gap-2">
+        <input name="domain" className="input mono" placeholder="govi.entry.mn" defaultValue={current ?? ""} required />
+        <button className="btn shrink-0" type="submit" disabled={pending}>{pending ? "…" : current ? "Солих" : "Domain нэмэх"}</button>
+      </div>
+      <Notice result={result} />
+    </form>
+  );
+}
+
+export function MonitorButtons({ hasCron, hasKey }: { hasCron: boolean; hasKey: boolean }) {
+  const { result, pending, run } = useAction();
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {!hasCron && <button className="btn btn-primary btn-sm" disabled={pending} onClick={run(enableMonitoring)}>{pending ? "…" : `Хяналт идэвхжүүлэх (5 мин тутам)${hasKey ? "" : " + API түлхүүр үүсгэх"}`}</button>}
+        <button className="btn btn-sm" disabled={pending} onClick={run(runMonitorNow)}>{pending ? "Шалгаж байна…" : "Одоо шалгах"}</button>
+        <button className="btn btn-sm btn-ghost" disabled={pending} onClick={() => { if (!confirm("Ямар ч service-д холбоогүй volume-уудыг Railway-аас устгах уу? (өгөгдөл нь алга болно)")) return; run(cleanupOrphanVolumes)(); }}>Салангид volume цэвэрлэх</button>
       </div>
       <Notice result={result} />
     </div>

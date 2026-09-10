@@ -236,6 +236,18 @@ export function computeAttention(
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Хувилбар v${health?.version} — core ${latest?.tagName}. Sync хийх` });
     if (lastSync && lastSync.status === "completed" && lastSync.conclusion !== "success")
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Сүүлийн upstream-sync амжилтгүй" });
+    if (c.healthOk === false && !(health && !health.ok))
+      out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Хяналт: апп хүрэхгүй${c.healthChangedAt ? ` (${Math.round((Date.now() - c.healthChangedAt.getTime()) / 60000)} мин)` : ""}` });
+    if (c.lastDeployStatus === "FAILED" || c.lastDeployStatus === "CRASHED")
+      out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Railway deployment ${c.lastDeployStatus} — build/лог шалга` });
+    if (c.railwayPostgresServiceId && c.status === "active" && !c.backupSchedule)
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Backup хуваарь тохируулаагүй — харилцагчийн хуудаснаас «Backup идэвхжүүлэх»" });
+    if (c.backupSchedule && c.lastBackupAt && Date.now() - c.lastBackupAt.getTime() > 48 * 3600 * 1000)
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Сүүлийн backup ${Math.round((Date.now() - c.lastBackupAt.getTime()) / 3600000)} цагийн өмнө — Railway backup-ыг шалга` });
+    if (c.customDomain && !c.customDomainVerified)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `${c.customDomain} DNS хүлээж байна — CNAME → ${c.dnsTarget ?? "?"}` });
+    if (c.syncNote)
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Авто sync саатсан: ${c.syncNote}` });
     if (c.railwayServiceId && !c.railwayRepoConnected)
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Railway service бэлэн, GitHub repo холбогдоогүй — build эхлээгүй" });
     else if (c.deployError)

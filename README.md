@@ -46,5 +46,16 @@ preDeploy `db:push`) + `entry-<код>-db` (postgres:16 + volume) service үүс
 бүртгэл устна (`lib/teardown.ts`). GitHub repo устгахад token-д `delete_repo` scope, Railway-д
 account token хэрэгтэй; дутуу устсан бол мөр «Архив» + тэмдэглэлтэй үлдэж дахин оролдож болно.
 
+**Нөөцлөлт:** deploy бүрд Postgres volume-д Railway backup хуваарь (өдөр + 7 хоног бүр) тавигдана;
+харилцагчийн хуудсанд сүүлийн backup, «Backup одоо». **Custom domain:** `CUSTOMER_BASE_DOMAIN`
+өгвөл `<код>.<domain>` автоматаар үүсч DNS CNAME заавар харагдана; баталгаажмагц хяналт
+`NEXT_PUBLIC_APP_URL`-ийг сольж дахин deploy хийнэ. **Хяналт:** Тохиргоо → «Хяналт идэвхжүүлэх»
+→ Railway дээр `entry-console-monitor` cron service (curl, 5 мин тутам) `/api/cron/check`-ийг
+дуудна (`lib/monitor.ts`): health up/down, deployment FAILED, backup, domain, авто sync;
+мэдэгдэл Telegram / webhook (`lib/notify.ts`). **Авто sync:** харилцагч бүрд toggle — шинэ
+release гармагц upstream-sync PR, core-ийн workflow merge-ийг туршиж tsc/lint/test ажиллуулаад
+`sync-checks-passed` label тавьсан бол console merge хийнэ (Railway main-аас deploy).
+**Түр зогсоох:** Railway app + DB deployment устгана (volume хэвээр), идэвхжүүлэхэд дахин deploy.
+
 Core repo талд: Settings → Secrets → `PROVISION_TOKEN`, `UPSTREAM_READ_TOKEN`
 (`.github/workflows/provision-customer.yml` толгойн тайлбар).

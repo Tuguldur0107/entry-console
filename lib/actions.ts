@@ -9,6 +9,12 @@ import { getCustomerBySlug, logEvent } from "./customers";
 import { provision } from "./provision";
 import { DeployError, deployNow, redeployNow } from "./deploy";
 import { destroyCustomer, TeardownError } from "./teardown";
+import { applyStatusTransition, LifecycleError } from "./lifecycle";
+import { attachBackupsAndDomain } from "./deploy";
+import { runMonitor } from "./monitor";
+import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes, ensureMonitorService, upsertVariables } from "./railway";
+import { config } from "./config";
+import { randomBytes } from "node:crypto";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -31,7 +37,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -102,6 +108,14 @@ export async function updateCustomer(
     return { ok: false, error: "Огноо YYYY-MM-DD" };
   if (appUrl && !/^https?:\/\//.test(appUrl)) return { ok: false, error: "URL https://-ээр эхлэх ёстой" };
 
+  let transitionNote: string | null = null;
+  if (status !== customer.status) {
+    try {
+      transitionNote = await applyStatusTransition(customer, status);
+    } catch (error) {
+      return { ok: false, error: errorText(error) };
+    }
+  }
   await db
     .update(customers)
     .set({
@@ -135,7 +149,7 @@ export async function updateCustomer(
   }
   revalidatePath(`/customers/${slug}`);
   revalidatePath("/");
-  return { ok: true, message: "Хадгалагдлаа" };
+  return { ok: true, message: transitionNote ? `Хадгалагдлаа · ${transitionNote}` : "Хадгалагдлаа" };
 }
 
 /** Харилцагчийн repo дээр upstream-sync.yml-ийг заасан ref-ээр ажиллуулна. */
@@ -299,10 +313,131 @@ export async function setCustomerStatus(slug: string, status: CustomerStatus): P
   if (!CUSTOMER_STATUSES.includes(status)) return { ok: false, error: "Төлөв буруу" };
   const customer = await getCustomerBySlug(slug);
   if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  let note: string | null = null;
+  try {
+    note = await applyStatusTransition(customer, status);
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
   await db.update(customers).set({ status, updatedAt: new Date() }).where(eq(customers.id, customer.id));
   await logEvent(customer.id, "status", `Төлөв: ${customer.status} → ${status}`);
   revalidatePath(`/customers/${slug}`);
   revalidatePath("/");
   revalidatePath("/customers");
-  return { ok: true, message: "Төлөв солигдлоо" };
+  return { ok: true, message: note ? `Төлөв солигдлоо · ${note}` : "Төлөв солигдлоо" };
+}
+
+/** Авто sync toggle. */
+export async function setAutoSync(slug: string, on: boolean): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  await db.update(customers).set({ autoSync: on, syncNote: null, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+  await logEvent(customer.id, "sync", on ? "Авто sync асаав: шинэ release → PR → шалгалт давбал merge" : "Авто sync унтраав");
+  revalidatePath(`/customers/${slug}`);
+  return { ok: true, message: on ? "Авто sync асаалттай" : "Авто sync унтраалттай" };
+}
+
+/** Backup хуваарь/custom domain нөхөх (хуучин харилцагч эсвэл унасан алхам). */
+export async function attachExtras(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    await attachBackupsAndDomain(customer);
+    revalidatePath(`/customers/${slug}`);
+    return { ok: true, message: "Backup хуваарь / domain тохируулагдлаа" };
+  } catch (error) {
+    revalidatePath(`/customers/${slug}`);
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Гараар backup авах (Railway volume snapshot). */
+export async function backupNow(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  if (!customer.railwayVolumeInstanceId) return { ok: false, error: "Volume бүртгэлгүй — эхлээд «Backup идэвхжүүлэх»" };
+  try {
+    await createBackup(customer.railwayVolumeInstanceId, `manual-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`);
+    await logEvent(customer.id, "deploy", "Гараар backup авлаа");
+    revalidatePath(`/customers/${slug}`);
+    return { ok: true, message: "Backup эхэллээ (1–2 мин)" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Custom domain гараар тавих / солих. */
+export async function setCustomDomainAction(slug: string, _prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const domain = text(formData, "domain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return { ok: false, error: "Domain буруу (жишээ: govi.entry.mn)" };
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  if (!customer.railwayProjectId || !customer.railwayEnvironmentId || !customer.railwayServiceId) return { ok: false, error: "Эхлээд Railway-д deploy хий" };
+  try {
+    if (customer.customDomainId) await deleteCustomDomain(customer.customDomainId).catch(() => {});
+    const d = await createCustomDomain(customer.railwayProjectId, customer.railwayEnvironmentId, customer.railwayServiceId, domain);
+    const cname = d.dns.find((r) => r.recordType === "CNAME") ?? d.dns[0];
+    await db.update(customers).set({ customDomain: d.domain, customDomainId: d.id, dnsTarget: cname?.requiredValue ?? null, customDomainVerified: d.verified, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+    await logEvent(customer.id, "deploy", `Custom domain ${d.domain} — DNS ${cname?.recordType ?? "CNAME"} → ${cname?.requiredValue ?? "?"}`);
+    revalidatePath(`/customers/${slug}`);
+    return { ok: true, message: `Domain үүслээ. DNS: ${cname?.recordType ?? "CNAME"} ${d.domain} → ${cname?.requiredValue ?? "?"}` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Хяналтыг гараар нэг удаа ажиллуулах. */
+export async function runMonitorNow(): Promise<ActionResult> {
+  await requireSession();
+  try {
+    const s = await runMonitor();
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { ok: true, message: `${s.checked} шалгав · унасан ${s.down.length} · сэргэсэн ${s.recovered.length} · merge ${s.merged.length} · sync ${s.synced.length} · мэдэгдэл ${s.alertsSent}${s.errors.length ? ` · алдаа: ${s.errors.join("; ")}` : ""}` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/**
+ * Хяналтын cron service үүсгэнэ (Railway, 5 мин тутам). CONSOLE_API_KEY байхгүй
+ * бол console-ийн өөрийн service дээр үүсгэж тавина (console дахин deploy хийгдэнэ).
+ */
+export async function enableMonitoring(): Promise<ActionResult> {
+  await requireSession();
+  const { projectId, environmentId, serviceId, serviceName, publicUrl } = config.self;
+  if (!projectId || !environmentId || !serviceId || !serviceName || !publicUrl)
+    return { ok: false, error: "Console Railway дээр ажиллахгүй байна (RAILWAY_* хувьсагч алга)" };
+  try {
+    let note = "";
+    if (!process.env.CONSOLE_API_KEY) {
+      await upsertVariables(projectId, environmentId, serviceId, { CONSOLE_API_KEY: randomBytes(24).toString("base64url") }, false);
+      note = " · CONSOLE_API_KEY үүсгэж console дахин deploy хийж байна (1–2 мин)";
+    }
+    const r = await ensureMonitorService({ projectId, environmentId, consoleServiceName: serviceName, consoleUrl: publicUrl });
+    revalidatePath("/settings");
+    return { ok: true, message: (r.created ? "Хяналтын cron service үүслээ (5 мин тутам)" : "Хяналтын cron service аль хэдийн бий") + note };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Ямар ч service-д холбоогүй volume-уудыг устгана. */
+export async function cleanupOrphanVolumes(): Promise<ActionResult> {
+  await requireSession();
+  const { projectId, environmentId } = config.self;
+  const p = process.env.RAILWAY_PROJECT_ID ?? projectId;
+  const e = process.env.RAILWAY_ENVIRONMENT_ID ?? environmentId;
+  if (!p || !e) return { ok: false, error: "RAILWAY_PROJECT_ID алга" };
+  try {
+    const n = await deleteOrphanVolumes(p, e);
+    revalidatePath("/settings");
+    return { ok: true, message: n ? `${n} салангид volume устгав` : "Салангид volume алга" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
 }

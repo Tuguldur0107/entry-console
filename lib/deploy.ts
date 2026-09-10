@@ -7,7 +7,19 @@ import { eq } from "drizzle-orm";
 import { logEvent } from "./customers";
 import { db } from "./db";
 import { customers, type Customer } from "./db/schema";
-import { connectRepo, deployCustomer, listProjectServices, railwayCanConnectRepo, railwayConfigured, redeployService } from "./railway";
+import { config } from "./config";
+import {
+  connectRepo,
+  createCustomDomain,
+  DEFAULT_BACKUP_KINDS,
+  deployCustomer,
+  listProjectServices,
+  railwayCanConnectRepo,
+  railwayConfigured,
+  redeployService,
+  setBackupSchedule,
+  volumeInstanceForService,
+} from "./railway";
 
 export class DeployError extends Error {
   constructor(message: string, public readonly customer?: Customer) {
@@ -77,8 +89,11 @@ export async function deployNow(customer: Customer, repoSeeded: boolean): Promis
       .where(eq(customers.id, customer.id))
       .returning();
     await logEvent(customer.id, "deploy", result.connected ? `Railway deploy эхэллээ → ${appUrl}` : `Railway service үүслээ (${appUrl}), repo холбогдоогүй — ${result.connectError}`);
-    if (!result.connected) throw new DeployError(connectNote!, next);
-    return next;
+    // Backup хуваарь + custom domain (алдаа нь deploy-г унагахгүй — хяналт дараа нөхнө)
+    const extra = await attachBackupsAndDomain(next).catch(() => ({}));
+    const withExtra = { ...next, ...extra } as Customer;
+    if (!result.connected) throw new DeployError(connectNote!, withExtra);
+    return withExtra;
   } catch (error) {
     if (error instanceof DeployError && error.customer) throw error; // DB аль хэдийн шинэчлэгдсэн
     const detail = `${msg(error)}${steps.length ? ` (алхам: ${steps[steps.length - 1]})` : ""}`;
@@ -125,6 +140,48 @@ export async function syncRepoConnections(rows: Customer[]): Promise<Customer[]>
     out.push(next ?? row);
   }
   return out;
+}
+
+/**
+ * Postgres volume-д өдөр+7 хоног тутмын backup хуваарь тавьж, CUSTOMER_BASE_DOMAIN
+ * тохируулсан бол <slug>.<base> custom domain үүсгэнэ. DB-д хадгалах patch буцаана
+ * (дуудагч бичнэ). Аль нэг нь унавал бусдыг үргэлжлүүлж, алдааг шиднэ.
+ */
+export async function attachBackupsAndDomain(customer: Customer): Promise<Partial<typeof customers.$inferInsert>> {
+  const patch: Partial<typeof customers.$inferInsert> = {};
+  const errors: string[] = [];
+  if (!customer.railwayProjectId || !customer.railwayEnvironmentId) return patch;
+  if (customer.railwayPostgresServiceId && !customer.railwayVolumeInstanceId) {
+    try {
+      const vi = await volumeInstanceForService(customer.railwayProjectId, customer.railwayEnvironmentId, customer.railwayPostgresServiceId);
+      if (vi) {
+        await setBackupSchedule(vi, DEFAULT_BACKUP_KINDS);
+        patch.railwayVolumeInstanceId = vi;
+        patch.backupSchedule = DEFAULT_BACKUP_KINDS.join(",");
+        await logEvent(customer.id, "deploy", `Backup хуваарь: ${DEFAULT_BACKUP_KINDS.join(", ")} (Railway volume)`);
+      }
+    } catch (error) {
+      errors.push(`backup: ${msg(error)}`);
+    }
+  }
+  if (config.baseDomain && customer.railwayServiceId && !customer.customDomainId) {
+    const domain = `${customer.slug}.${config.baseDomain}`;
+    try {
+      const d = await createCustomDomain(customer.railwayProjectId, customer.railwayEnvironmentId, customer.railwayServiceId, domain);
+      const cname = d.dns.find((r) => r.recordType === "CNAME") ?? d.dns[0];
+      patch.customDomain = d.domain;
+      patch.customDomainId = d.id;
+      patch.dnsTarget = cname?.requiredValue ?? null;
+      patch.customDomainVerified = d.verified;
+      await logEvent(customer.id, "deploy", `Custom domain ${d.domain} үүслээ — DNS: ${cname ? `${cname.recordType} ${cname.hostlabel || d.domain} → ${cname.requiredValue}` : "Railway-с харна"}`);
+    } catch (error) {
+      errors.push(`domain: ${msg(error)}`);
+    }
+  }
+  if (Object.keys(patch).length > 0)
+    await db.update(customers).set({ ...patch, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+  if (errors.length > 0) throw new DeployError(errors.join("; "));
+  return patch;
 }
 
 /** Байгаа service-ийг дахин deploy (сүүлийн commit-оор). Repo холбогдоогүй бол эхлээд холбоно. */

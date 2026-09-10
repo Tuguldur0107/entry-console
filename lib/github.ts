@@ -245,6 +245,34 @@ export async function dispatchWorkflow(
   });
 }
 
+export interface PullInfo {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  headRef: string;
+  headSha: string;
+  labels: string[];
+  mergeable: boolean | null;
+  mergeableState: string;
+}
+
+export async function getPull(fullName: string, number: number): Promise<PullInfo> {
+  const p = await gh<{ number: number; title: string; html_url: string; head: { ref: string; sha: string }; labels: { name: string }[]; mergeable: boolean | null; mergeable_state: string }>(`/repos/${fullName}/pulls/${number}`);
+  return { number: p.number, title: p.title, htmlUrl: p.html_url, headRef: p.head.ref, headSha: p.head.sha, labels: p.labels.map((l) => l.name), mergeable: p.mergeable, mergeableState: p.mergeable_state };
+}
+
+/** Нээлттэй upstream-sync PR-ууд (head `upstream-sync/*`). */
+export async function listOpenSyncPulls(fullName: string): Promise<PullInfo[]> {
+  const list = await gh<{ number: number; title: string; html_url: string; head: { ref: string; sha: string }; labels: { name: string }[] }[]>(`/repos/${fullName}/pulls?state=open&per_page=20`);
+  return list
+    .filter((p) => p.head.ref.startsWith("upstream-sync/"))
+    .map((p) => ({ number: p.number, title: p.title, htmlUrl: p.html_url, headRef: p.head.ref, headSha: p.head.sha, labels: p.labels.map((l) => l.name), mergeable: null, mergeableState: "unknown" }));
+}
+
+export async function mergePull(fullName: string, number: number, title: string): Promise<void> {
+  await gh<void>(`/repos/${fullName}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", commit_title: title }) });
+}
+
 export async function listOpenPulls(fullName: string): Promise<{ title: string; htmlUrl: string; number: number }[]> {
   const pulls = await gh<{ title: string; html_url: string; number: number }[]>(
     `/repos/${fullName}/pulls?state=open&per_page=20`

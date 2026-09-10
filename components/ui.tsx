@@ -19,6 +19,7 @@ export const EVENT_LABELS: Record<string, string> = {
   note: "Тэмдэглэл",
   billing: "Төлбөр",
   deploy: "Deploy",
+  alert: "Мэдэгдэл",
 };
 const STATUS_TONE: Record<CustomerStatus, string> = {
   provisioning: "badge-warning",

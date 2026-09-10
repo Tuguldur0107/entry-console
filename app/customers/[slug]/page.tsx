@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CopyButton, CustomerEditForm, DeployPanel, DestroyForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
+import { AutoSyncToggle, BackupPanel, CopyButton, CustomerEditForm, DeployPanel, DestroyForm, DomainForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
 import { deployBlocker } from "@/lib/deploy";
 import { railwayConfigured, railwayProjectUrl } from "@/lib/railway";
+import { config } from "@/lib/config";
 import { teardownPlan } from "@/lib/teardown";
 
 export const dynamic = "force-dynamic";
@@ -94,10 +95,52 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
               </dl>
             )}
             <DeployPanel slug={slug} deployed={deployed} connected={c.railwayRepoConnected} autoDeploy={c.autoDeploy} blocker={deployed && c.railwayRepoConnected ? null : deployBlocker(c, !!repo?.pushedAt)} deployError={c.deployError} />
+            {deployed && (
+              <div className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                <div>
+                  <div className="mb-1 text-xs font-medium text-text-3">Нөөцлөлт (Railway volume backup)</div>
+                  <dl className="mb-2 space-y-1 text-sm">
+                    <Row k="Хуваарь" v={c.backupSchedule ? <span className="badge badge-success">{c.backupSchedule.split(",").map((k) => ({ DAILY: "өдөр бүр", WEEKLY: "7 хоног бүр", MONTHLY: "сар бүр" })[k] ?? k).join(" + ")}</span> : <span className="badge badge-warning">тохируулаагүй</span>} />
+                    <Row k="Сүүлийн backup" v={c.lastBackupAt ? <span title={fmtDate(c.lastBackupAt)}>{fmtAgo(c.lastBackupAt)}</span> : "—"} />
+                  </dl>
+                  <BackupPanel slug={slug} hasVolume={!!c.railwayVolumeInstanceId} hasDomainSlot={!!config.baseDomain && !c.customDomainId} />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-medium text-text-3">Custom domain</div>
+                  {c.customDomain ? (
+                    <dl className="mb-2 space-y-1 text-sm">
+                      <Row k="Domain" v={<span className="mono">{c.customDomain}</span>} />
+                      <Row k="Төлөв" v={c.customDomainVerified ? <span className="badge badge-success">баталгаажсан · SSL</span> : <span className="badge badge-warning">DNS хүлээж байна</span>} />
+                      {!c.customDomainVerified && c.dnsTarget && (
+                        <div className="rounded-md bg-surface-2 p-2 text-xs">
+                          DNS-д нэмнэ: <span className="mono">CNAME {c.customDomain} → {c.dnsTarget}</span>
+                          <CopyButton text={c.dnsTarget} label="Хуулах" />
+                          <div className="mt-1 text-text-3">Тархахад 5–30 мин; хяналт автоматаар баталгаажуулж хаягийг солино.</div>
+                        </div>
+                      )}
+                    </dl>
+                  ) : (
+                    <p className="mb-2 text-sm text-text-3">{config.baseDomain ? `${c.slug}.${config.baseDomain} автоматаар үүснэ (дээрх «Domain үүсгэх»)` : "Тохиргоонд CUSTOMER_BASE_DOMAIN өгвөл автоматаар; эсвэл гараар:"}</p>
+                  )}
+                  <DomainForm slug={slug} current={c.customDomain} />
+                </div>
+                <div className="sm:col-span-2">
+                  <div className="mb-1 text-xs font-medium text-text-3">Хяналт</div>
+                  <p className="text-sm">
+                    {c.healthOk === null ? <span className="text-text-3">хараахан шалгаагүй — Тохиргоо → Хяналт</span> : c.healthOk ? <span className="badge badge-success">ажиллаж байна</span> : <span className="badge badge-danger">хүрэхгүй</span>}
+                    {c.healthCheckedAt && <span className="ml-2 text-xs text-text-3">шалгасан {fmtAgo(c.healthCheckedAt)}{c.healthChangedAt ? ` · энэ төлөвт орсон ${fmtAgo(c.healthChangedAt)}` : ""}</span>}
+                  </p>
+                </div>
+              </div>
+            )}
           </Section>
 
           <Section title="Core шинэчлэлт" sub={`Харилцагчийн repo дээр upstream-sync.yml ажиллаж PR нээнэ · core ${latest?.tagName ?? "—"}`}>
             <SyncButton slug={slug} defaultRef={latest?.tagName ?? null} />
+            <div className="mt-3">
+              <AutoSyncToggle slug={slug} on={c.autoSync} />
+              {c.syncNote && <p className="notice notice-warning mt-2">{c.syncNote}</p>}
+            </div>
             {customer.openPulls.length > 0 && (
               <div className="mt-4">
                 <div className="mb-1 text-xs font-medium text-text-3">Нээлттэй PR</div>

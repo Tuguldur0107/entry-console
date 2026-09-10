@@ -8,7 +8,7 @@ import { logEvent } from "./customers";
 import { db } from "./db";
 import { customers, type Customer } from "./db/schema";
 import { deleteRepo, getCustomerRepo, GitHubError } from "./github";
-import { deleteService, railwayCanConnectRepo, railwayConfigured } from "./railway";
+import { deleteCustomDomain, deleteService, railwayCanConnectRepo, railwayConfigured } from "./railway";
 
 export class TeardownError extends Error {
   constructor(message: string, public readonly failed: string[]) {
@@ -45,10 +45,20 @@ export async function destroyCustomer(customer: Customer): Promise<void> {
   const done: string[] = [];
   let next: Partial<typeof customers.$inferInsert> = {};
 
-  // 1. Railway app service
-  if (customer.railwayServiceId && customer.railwayProjectId) {
+  // 0. Custom domain (service устахад хамт устдаг ч ил устгана)
+  if (customer.customDomainId) {
     try {
-      await deleteService(customer.railwayProjectId, customer.railwayServiceId);
+      await deleteCustomDomain(customer.customDomainId);
+      done.push(`domain ${customer.customDomain}`);
+      next = { ...next, customDomainId: null, customDomain: null, dnsTarget: null, customDomainVerified: false };
+    } catch {
+      /* service-тэй хамт устана */
+    }
+  }
+  // 1. Railway app service
+  if (customer.railwayServiceId && customer.railwayProjectId && customer.railwayEnvironmentId) {
+    try {
+      await deleteService(customer.railwayProjectId, customer.railwayEnvironmentId!, customer.railwayServiceId);
       done.push(`Railway service entry-${customer.slug}`);
       next = { ...next, railwayServiceId: null, railwayRepoConnected: false, appUrl: null };
     } catch (error) {
@@ -56,9 +66,9 @@ export async function destroyCustomer(customer: Customer): Promise<void> {
     }
   }
   // 2. Railway Postgres (+ volume)
-  if (customer.railwayPostgresServiceId && customer.railwayProjectId) {
+  if (customer.railwayPostgresServiceId && customer.railwayProjectId && customer.railwayEnvironmentId) {
     try {
-      await deleteService(customer.railwayProjectId, customer.railwayPostgresServiceId);
+      await deleteService(customer.railwayProjectId, customer.railwayEnvironmentId!, customer.railwayPostgresServiceId);
       done.push(`Railway Postgres entry-${customer.slug}-db`);
       next = { ...next, railwayPostgresServiceId: null };
     } catch (error) {
