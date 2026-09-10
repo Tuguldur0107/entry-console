@@ -44,8 +44,28 @@ export async function runMonitor(): Promise<MonitorSummary> {
     const patch: Partial<typeof customers.$inferInsert> = {};
     const label = `${c.displayName} (${c.slug})`;
 
+    // 0. Railway deployment явж байгаа бол health шилжилтийг энэ удаа алгасна (хуурамч «унасан» гарахгүй)
+    let deployInProgress = false;
+    if (railwayConfigured() && c.railwayProjectId && c.railwayEnvironmentId && c.railwayServiceId && c.railwayRepoConnected) {
+      try {
+        const dep = await latestDeployment(c.railwayProjectId, c.railwayEnvironmentId, c.railwayServiceId);
+        const st = dep?.status ?? null;
+        deployInProgress = !!st && ["BUILDING", "DEPLOYING", "INITIALIZING", "QUEUED", "WAITING"].includes(st);
+        if (st && st !== c.lastDeployStatus) {
+          patch.lastDeployStatus = st;
+          if (st === "FAILED" || st === "CRASHED") {
+            summary.deployFailed.push(c.slug);
+            alerts.push(`⚠️ ${label} — Railway deployment ${st}`);
+            await logEvent(c.id, "alert", `Railway deployment ${st}`);
+          }
+        }
+      } catch (error) {
+        summary.errors.push(`${c.slug} deployment: ${msg(error)}`);
+      }
+    }
+
     // 1. Health
-    if (c.appUrl && c.status === "active") {
+    if (c.appUrl && c.status === "active" && !deployInProgress) {
       const health = await fetchHealth(c.appUrl);
       const ok = !!health?.ok;
       patch.healthOk = ok;
@@ -70,22 +90,6 @@ export async function runMonitor(): Promise<MonitorSummary> {
 
     // 2. Railway deployment / backup / domain
     if (railwayConfigured() && c.railwayProjectId && c.railwayEnvironmentId) {
-      if (c.railwayServiceId && c.railwayRepoConnected) {
-        try {
-          const dep = await latestDeployment(c.railwayProjectId, c.railwayEnvironmentId, c.railwayServiceId);
-          const st = dep?.status ?? null;
-          if (st && st !== c.lastDeployStatus) {
-            patch.lastDeployStatus = st;
-            if (st === "FAILED" || st === "CRASHED") {
-              summary.deployFailed.push(c.slug);
-              alerts.push(`⚠️ ${label} — Railway deployment ${st}`);
-              await logEvent(c.id, "alert", `Railway deployment ${st}`);
-            }
-          }
-        } catch (error) {
-          summary.errors.push(`${c.slug} deployment: ${msg(error)}`);
-        }
-      }
       // Backup/domain дутуу бол нөхнө (хуучин харилцагч, унасан алхам)
       if (c.railwayPostgresServiceId && (!c.railwayVolumeInstanceId || (config.baseDomain && !c.customDomainId))) {
         try {
