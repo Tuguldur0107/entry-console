@@ -7,8 +7,8 @@ import { Notice } from "./forms";
 
 // Кирилл → латин (lib/signup.ts slugify-тай ижил — зөвхөн урьдчилан харуулахад)
 const CYR: Record<string, string> = { а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"yo",ж:"j",з:"z",и:"i",й:"i",к:"k",л:"l",м:"m",н:"n",о:"o",ө:"u",п:"p",р:"r",с:"s",т:"t",у:"u",ү:"u",ф:"f",х:"kh",ц:"ts",ч:"ch",ш:"sh",щ:"sh",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya" };
-const LEGAL_RE = /\b(ххк|хк|төхк|төүг|хзх|ббсб|онөаатүг|ноаатүг|тбб|llc|jsc|ltd|inc|co)\.?\b/gi;
-const slugify = (s: string) => s.toLowerCase().replace(LEGAL_RE, " ").split("").map((c) => CYR[c] ?? c).join("").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 31);
+const LEGAL_RE = /(^|[^\p{L}\p{N}])(ххк|хк|төхк|төүг|хзх|ббсб|онөаатүг|ноаатүг|тбб|llc|jsc|ltd|inc|co)\.?(?=$|[^\p{L}\p{N}])/giu;
+const slugify = (s: string) => s.toLowerCase().replace(LEGAL_RE, "$1 ").split("").map((c) => CYR[c] ?? c).join("").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 31);
 
 export function SignupForm({ baseDomain }: { baseDomain: string | null }) {
   const [result, action, pending] = useActionState(submitSignupRequest, null);
