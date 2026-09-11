@@ -364,12 +364,14 @@ export function InviteForm({ slug }: { slug: string }) {
   const [result, action, pending] = useActionState(bound, null);
   return (
     <form action={action} className="space-y-2">
-      <div className="flex gap-2">
-        <input name="username" className="input" placeholder="github-username" required />
-        <select name="permission" className="select w-28 shrink-0" defaultValue="push">
-          <option value="push">Write</option><option value="pull">Read</option><option value="admin">Admin</option>
+      <input name="username" className="input w-full" placeholder="github-username" aria-label="GitHub хэрэглэгчийн нэр" required />
+      <div className="flex items-center gap-2">
+        <select name="permission" className="select flex-1" aria-label="Эрх" defaultValue="push">
+          <option value="push">Write — код унших, бичих</option>
+          <option value="pull">Read — зөвхөн унших</option>
+          <option value="admin">Admin — бүрэн эрх</option>
         </select>
-        <button className="btn shrink-0" type="submit" disabled={pending}>Урих</button>
+        <button className="btn shrink-0" type="submit" disabled={pending}>{pending ? "…" : "Урих"}</button>
       </div>
       <Notice result={result} />
     </form>
