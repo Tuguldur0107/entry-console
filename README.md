@@ -12,6 +12,7 @@ Entry Accounting-ийн **харилцагчдыг** удирдах самбар
 | Тохиргоо, шалгалт | Token scope, org эрх, core secret/variable, workflow, DB — ногоон/улаан шалгалт + засах заавар |
 | Харилцагчид | Хайлт, төлвөөр шүүх, CSV экспорт; дэлгэрэнгүйд гэрээ/төлбөр, sync, эрх, түүх, төлөв |
 | Dark mode | Системийн тохиргоо + гараар солих, localStorage-д хадгална |
+| Бүртгүүлэх хүсэлт (нээлттэй) | `/signup` хуудас, `POST /api/signup` (нэвтрэлтгүй, IP тутамд цагт 5) → «Хүсэлт» төлөвтэй бүртгэл + Telegram мэдэгдэл; repo/Railway ҮҮСЭХГҮЙ. Самбараас «Батлах» (код, багц, core ref, авто deploy засаж болно) → repo → Railway; «Татгалзах» → лавлагаанд үлдэнэ. REST: `POST /api/customers/<slug>/approve|reject` |
 | Харилцагч нэмэх (бүртгэл + repo) | Core repo-ийн `provision-customer.yml`-ийг dispatch → repo үүсэх, core түүх push, Actions permission, `UPSTREAM_TOKEN`, хэрэглэгч урих |
 | Хувилбарын самбар | Харилцагч бүрийн `<app>/api/health` → version vs core-ийн сүүлийн release |
 | Sync | Харилцагчийн `upstream-sync.yml` dispatch (ref = tag) → PR |

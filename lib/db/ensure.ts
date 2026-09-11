@@ -52,6 +52,27 @@ export function ensureSchema(): Promise<void> {
         `alter table "customers" add column if not exists "railway_postgres_service_id" text`,
         `alter table "customers" add column if not exists "railway_repo_connected" boolean not null default false`,
         `alter table "customers" add column if not exists "deploy_error" text`,
+        // Нөөцлөлт, domain, хяналт, авто sync (v2.2)
+        `alter table "customers" add column if not exists "railway_volume_instance_id" text`,
+        `alter table "customers" add column if not exists "backup_schedule" text`,
+        `alter table "customers" add column if not exists "last_backup_at" timestamptz`,
+        `alter table "customers" add column if not exists "custom_domain" text`,
+        `alter table "customers" add column if not exists "custom_domain_id" text`,
+        `alter table "customers" add column if not exists "dns_target" text`,
+        `alter table "customers" add column if not exists "custom_domain_verified" boolean not null default false`,
+        `alter table "customers" add column if not exists "health_ok" boolean`,
+        `alter table "customers" add column if not exists "health_checked_at" timestamptz`,
+        `alter table "customers" add column if not exists "health_changed_at" timestamptz`,
+        `alter table "customers" add column if not exists "alerted_at" timestamptz`,
+        `alter table "customers" add column if not exists "last_deploy_status" text`,
+        `alter table "customers" add column if not exists "auto_sync" boolean not null default false`,
+        `alter table "customers" add column if not exists "sync_note" text`,
+        // Нээлттэй бүртгүүлэх хүсэлт (v2.3)
+        `alter table "customers" add column if not exists "source" text not null default 'console'`,
+        `alter table "customers" add column if not exists "request_note" text`,
+        `alter table "customers" add column if not exists "decided_at" timestamptz`,
+        `alter table "customers" add column if not exists "decision_note" text`,
+        `create table if not exists "console_state" ("key" text primary key, "value" jsonb not null, "updated_at" timestamptz not null default now())`,
       ])
         await db.execute(sql.raw(ddl));
     })().catch((error) => {

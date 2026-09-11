@@ -1,26 +1,30 @@
 import Link from "next/link";
 
+import { QuickApproveButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EmptyState, HealthBadge, PLAN_LABELS, PageHeader, RunBadge, STATUS_LABELS, StatusBadge, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { filterCustomers, loadDashboard } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Харилцагчид" };
 
-const FILTERS: [string, string][] = [["all", "Бүгд"], ["active", "Идэвхтэй"], ["provisioning", "Үүсгэж байна"], ["suspended", "Түр зогссон"], ["archived", "Архив"]];
+const FILTERS: [string, string][] = [["all", "Бүгд"], ["pending", "Хүсэлт"], ["active", "Идэвхтэй"], ["provisioning", "Үүсгэж байна"], ["suspended", "Түр зогссон"], ["archived", "Архив"], ["rejected", "Татгалзсан"]];
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; deleted?: string }> }) {
   await requireSession();
   const { q, status = "all", deleted } = await searchParams;
   const { latest, customers } = await loadDashboard();
+  const signupUrl = `${config.self.publicUrl ?? ""}/signup`;
   const rows = filterCustomers(customers, q, status);
   const csv = ["slug,name,register_no,contact,email,phone,status,plan,monthly_fee,repo,app_url,created_at",
     ...customers.map(({ customer: c }) => [c.slug, c.displayName, c.registerNo, c.contactName, c.contactEmail, c.contactPhone, c.status, c.plan, c.monthlyFee, c.githubRepo, c.appUrl, c.createdAt.toISOString()].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
 
   return (
     <div className="space-y-4">
-      {deleted && <p className="notice notice-success">«{deleted}» харилцагч бүрэн устлаа — Railway service, GitHub repo, бүртгэл.</p>}
+      {deleted && <p className="notice notice-success">«{deleted}» устлаа — Railway service, GitHub repo (байсан бол), console бүртгэл.</p>}
+      {status === "pending" && <p className="notice notice-info">Нээлттэй бүртгүүлэх хуудас: <span className="mono">{signupUrl}</span> — хүсэлт энд «Хүсэлт» төлөвтэй орж ирнэ; батлахад repo + Railway автоматаар үүснэ.</p>}
       <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл`}>
         <a href={`data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + csv)}`} download="entry-customers.csv" className="btn btn-sm"><Icons.download className="h-4 w-4" /> CSV</a>
         <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>
@@ -58,7 +62,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                     <Link href={`/customers/${c.slug}`} className="font-medium hover:underline">{c.displayName}</Link>
                     <div className="mono text-text-3">{repo?.fullName ?? c.githubRepo}</div>
                   </td>
-                  <td><StatusBadge status={c.status} /></td>
+                  <td><StatusBadge status={c.status} />{c.status === "pending" && <div className="mt-1"><QuickApproveButton slug={c.slug} /></div>}</td>
                   <td className="text-text-2">{PLAN_LABELS[c.plan]}{Number(c.monthlyFee) > 0 && <div className="text-xs text-text-3">{fmtMnt(c.monthlyFee)}/сар</div>}</td>
                   <td><HealthBadge health={health} behind={behind} latest={latest?.tagName ?? null} /></td>
                   <td><RunBadge run={lastSync} /></td>

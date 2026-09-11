@@ -5,8 +5,20 @@
 import { relations } from "drizzle-orm";
 import { boolean, date, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
-export const CUSTOMER_STATUSES = ["provisioning", "active", "suspended", "archived"] as const;
+/**
+ * pending      — нээлттэй бүртгүүлэх хүсэлт (/signup); repo/Railway ХАРААХАН үүсээгүй
+ * provisioning — батлагдсан; core дээр provision workflow явж байна
+ * active / suspended / archived — ердийн амьдралын мөчлөг
+ * rejected     — хүсэлтийг татгалзсан (бүртгэл лавлагаанд үлдэнэ)
+ */
+export const CUSTOMER_STATUSES = ["pending", "provisioning", "active", "suspended", "archived", "rejected"] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
+/** Хүсэлтийн төлөвүүд — repo/Railway байхгүй, зөвхөн бүртгэл */
+export const REQUEST_STATUSES: readonly CustomerStatus[] = ["pending", "rejected"];
+export const isRequestStatus = (s: CustomerStatus) => REQUEST_STATUSES.includes(s);
+
+export const CUSTOMER_SOURCES = ["console", "signup", "api"] as const;
+export type CustomerSource = (typeof CUSTOMER_SOURCES)[number];
 
 export const CUSTOMER_PLANS = ["pilot", "basic", "pro"] as const;
 export type CustomerPlan = (typeof CUSTOMER_PLANS)[number];
@@ -65,6 +77,13 @@ export const customers = pgTable("customers", {
   autoSync: boolean("auto_sync").notNull().default(false),
   /** Sync-ийн саад (conflict, шалгалт унасан) — анхаарах зүйлсэд */
   syncNote: text("sync_note"),
+  /** Хаанаас бүртгэгдсэн: console маягт | нээлттэй /signup | REST */
+  source: text("source").$type<CustomerSource>().notNull().default("console"),
+  /** Хүсэлт гаргагчийн тайлбар (/signup) */
+  requestNote: text("request_note"),
+  /** Хүсэлтийг батлах/татгалзах шийдвэрийн цаг, тайлбар */
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decisionNote: text("decision_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

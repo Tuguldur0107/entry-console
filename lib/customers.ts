@@ -226,6 +226,12 @@ export function computeAttention(
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
   for (const { customer: c, repo, health, behind, lastSync } of items) {
+    if (c.status === "pending") {
+      const h = Math.round((Date.now() - c.createdAt.getTime()) / 3600000);
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `Бүртгүүлэх хүсэлт хүлээгдэж байна${h >= 1 ? ` (${h} цаг)` : ""} — батлах / татгалзах` });
+      continue;
+    }
+    if (c.status === "rejected") continue;
     if (repoListOk && c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo 10+ минут үүсээгүй — core-ийн PROVISION_TOKEN, workflow run-ыг шалга" });
     if (repoListOk && repo && !repo.pushedAt)

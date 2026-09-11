@@ -1,12 +1,14 @@
 "use server";
 
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { checkPassword, createSession, destroySession, requireSession } from "./auth";
 import { getCustomerBySlug, logEvent } from "./customers";
 import { provision } from "./provision";
+import { approveRequest, rejectRequest, SignupError, submitSignup } from "./signup";
 import { DeployError, deployNow, redeployNow } from "./deploy";
 import { destroyCustomer, TeardownError } from "./teardown";
 import { applyStatusTransition, LifecycleError } from "./lifecycle";
@@ -37,7 +39,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -82,6 +84,92 @@ export async function provisionCustomer(
     return { ok: false, error: errorText(error) };
   }
   redirect(`/customers/${slug}`);
+}
+
+// ── Нээлттэй бүртгүүлэх хүсэлт (session ШААРДАХГҮЙ) → батлах / татгалзах ──────
+
+/** /signup маягт → lib/signup.ts (REST /api/signup-тай ижил цөм). Амжилтад /signup/done руу. */
+export async function submitSignupRequest(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "?";
+  try {
+    await submitSignup(
+      {
+        companyName: text(formData, "company_name"),
+        registerNo: text(formData, "register_no"),
+        contactName: text(formData, "contact_name"),
+        email: text(formData, "email"),
+        phone: text(formData, "phone"),
+        slug: text(formData, "slug"),
+        note: text(formData, "note"),
+        website: text(formData, "website"),
+      },
+      ip
+    );
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  redirect("/signup/done");
+}
+
+/** Хүсэлт батлах — маягтын талбаруудаар (код, багц, төлбөр, core ref, GitHub эрх, автомат deploy). */
+export async function approveRequestAction(slug: string, _prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Хүсэлт олдсонгүй" };
+  let next: string;
+  try {
+    const approved = await approveRequest(customer, {
+      slug: text(formData, "slug") || undefined,
+      displayName: text(formData, "display_name") || undefined,
+      githubUsers: text(formData, "github_users"),
+      ref: text(formData, "ref"),
+      plan: text(formData, "plan") || undefined,
+      monthlyFee: text(formData, "monthly_fee") || undefined,
+      autoDeploy: text(formData, "auto_deploy"),
+      note: text(formData, "note"),
+    });
+    next = approved.slug;
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath("/");
+  revalidatePath("/customers");
+  if (next !== slug) redirect(`/customers/${next}`);
+  revalidatePath(`/customers/${slug}`);
+  return { ok: true, message: "Батлагдлаа — repo үүсгэх ажил эхэллээ (~1 мин), дараа нь Railway deploy" };
+}
+
+/** Самбараас нэг товчоор батлах — хүсэлтийн утгууд + сүүлийн release + автомат deploy. */
+export async function approveRequestQuick(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Хүсэлт олдсонгүй" };
+  try {
+    const ref = (await getLatestRelease().catch(() => null))?.tagName ?? "main";
+    await approveRequest(customer, { ref, autoDeploy: true });
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath("/");
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${slug}`);
+  return { ok: true, message: `${customer.displayName} батлагдлаа — repo, дараа нь Railway автоматаар` };
+}
+
+export async function rejectRequestAction(slug: string, reason: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Хүсэлт олдсонгүй" };
+  try {
+    await rejectRequest(customer, reason);
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath("/");
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${slug}`);
+  return { ok: true, message: "Татгалзлаа" };
 }
 
 /** Бизнесийн мэдээлэл засах — гэрээ, холбоо барих, багц, төлөв. */

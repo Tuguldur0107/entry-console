@@ -152,7 +152,7 @@ export default async function SettingsPage() {
       </Section>
       <Section title="Урсгал" sub="Юу хаана болдог вэ">
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-text-2">
-          <li>«Харилцагч нэмэх» → бүртгэл DB-д, core repo-ийн <span className="mono">provision-customer.yml</span> dispatch.</li>
+          <li>Хоёр зам: (а) нээлттэй <span className="mono">{config.self.publicUrl ?? ""}/signup</span> (эсвэл <span className="mono">POST /api/signup</span>) → «Хүсэлт» төлөвтэй бүртгэл, Telegram мэдэгдэл → самбараас «Батлах»; (б) «Харилцагч нэмэх» маягт. Хоёулаа → core repo-ийн <span className="mono">provision-customer.yml</span> dispatch.</li>
           <li>Workflow: <span className="mono">{config.owner}/entry-&lt;код&gt;</span> repo, core түүх push, Actions permission, secret, урилга.</li>
           <li>Самбар repo-г олмогц харилцагч «Идэвхтэй» болно; автомат deploy сонгосон бол Railway дээр <span className="mono">entry-&lt;код&gt;</span> + <span className="mono">entry-&lt;код&gt;-db</span> service үүсч хаяг бүртгэгдэнэ.</li>
           <li>Харилцагчийн repo-д commit орох бүрд Railway автоматаар дахин build хийнэ; console-оос «Дахин deploy» ч болно.</li>

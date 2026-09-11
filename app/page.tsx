@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-import { SyncAllButton } from "@/components/forms";
+import { QuickApproveButton, SyncAllButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, EmptyState, HealthBadge, Kpi, PageHeader, RunBadge, Section, StatusBadge, fmtAgo, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
+import { isRequestStatus } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,8 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   await requireSession();
   const [{ latest, customers, provisioning, githubErrors }, activity] = await Promise.all([loadDashboard(), loadRecentActivity(10)]);
-  const visible = customers.filter((c) => c.customer.status !== "archived");
+  const requests = customers.filter((c) => c.customer.status === "pending");
+  const visible = customers.filter((c) => c.customer.status !== "archived" && !isRequestStatus(c.customer.status));
   const active = visible.filter((c) => c.customer.status === "active");
   const behindCount = visible.filter((c) => c.behind).length;
   const downCount = visible.filter((c) => c.health && !c.health.ok).length;
@@ -37,8 +39,29 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      {requests.length > 0 && (
+        <Section title="Бүртгүүлэх хүсэлт" sub={`${requests.length} хүлээгдэж байна · батлахад repo + Railway автоматаар үүснэ`} right={<Link href="/customers?status=pending" className="btn btn-ghost btn-sm">Бүгд</Link>}>
+          <ul className="divide-y divide-border">
+            {requests.slice(0, 5).map(({ customer: c }) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <Link href={`/customers/${c.slug}`} className="font-medium hover:underline">{c.displayName}</Link>
+                  <span className="mono ml-2 text-text-3">entry-{c.slug}</span>
+                  <div className="text-text-2">{[c.contactName, c.contactPhone, c.contactEmail].filter(Boolean).join(" · ")} <span className="text-xs text-text-3">· {fmtAgo(c.createdAt)}</span></div>
+                  {c.requestNote && <div className="mt-0.5 truncate text-xs text-text-3" title={c.requestNote}>«{c.requestNote}»</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link href={`/customers/${c.slug}`} className="btn btn-sm">Дэлгэрэнгүй</Link>
+                  <QuickApproveButton slug={c.slug} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${visible.length}${provisioning.length ? ` · үүсгэж байна ${provisioning.length}` : ""}`} href="/customers" />
+        <Kpi label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${visible.length}${provisioning.length ? ` · үүсгэж байна ${provisioning.length}` : ""}${requests.length ? ` · хүсэлт ${requests.length}` : ""}`} href="/customers" />
         <Kpi label="Сарын орлого (MRR)" value={fmtMnt(mrr)} sub="идэвхтэй харилцагчдын сарын төлбөр" />
         <Kpi label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} sub={latest ? `core ${latest.tagName}` : undefined} />
         <Kpi label="Хүрэхгүй deploy" value={String(downCount)} tone={downCount > 0 ? "danger" : "success"} sub="/api/health хариу" />

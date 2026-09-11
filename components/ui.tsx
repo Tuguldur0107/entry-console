@@ -5,11 +5,14 @@ import type { CustomerPlan, CustomerStatus } from "@/lib/db/schema";
 
 export const PLAN_LABELS: Record<CustomerPlan, string> = { pilot: "Туршилт", basic: "Basic", pro: "Pro" };
 export const STATUS_LABELS: Record<CustomerStatus, string> = {
+  pending: "Хүсэлт",
   provisioning: "Үүсгэж байна",
   active: "Идэвхтэй",
   suspended: "Түр зогссон",
   archived: "Архив",
+  rejected: "Татгалзсан",
 };
+export const SOURCE_LABELS: Record<string, string> = { console: "Console", signup: "Бүртгүүлэх хуудас", api: "REST API" };
 export const EVENT_LABELS: Record<string, string> = {
   provisioned: "Үүсгэлт",
   activated: "Идэвхжсэн",
@@ -20,12 +23,17 @@ export const EVENT_LABELS: Record<string, string> = {
   billing: "Төлбөр",
   deploy: "Deploy",
   alert: "Мэдэгдэл",
+  request: "Хүсэлт",
+  approved: "Батлагдсан",
+  rejected: "Татгалзсан",
 };
 const STATUS_TONE: Record<CustomerStatus, string> = {
+  pending: "badge-info",
   provisioning: "badge-warning",
   active: "badge-success",
   suspended: "badge-danger",
   archived: "badge-muted",
+  rejected: "badge-muted",
 };
 
 export const fmtMnt = (v: string | number) => `${new Intl.NumberFormat("en-US").format(Math.round(Number(v)))} ₮`;

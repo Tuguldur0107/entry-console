@@ -1,15 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AutoSyncToggle, BackupPanel, CopyButton, CustomerEditForm, DeployPanel, DestroyForm, DomainForm, InviteForm, NoteForm, StatusActions, SyncButton } from "@/components/forms";
+import { ApproveForm, AutoSyncToggle, BackupPanel, CopyButton, CustomerEditForm, DeleteRequestButton, DeployPanel, DestroyForm, DomainForm, InviteForm, NoteForm, RejectForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
-import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
+import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, SOURCE_LABELS, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getCustomerBySlug, loadCustomerDetail } from "@/lib/customers";
+import { db } from "@/lib/db";
+import { customerEvents, isRequestStatus } from "@/lib/db/schema";
+import { getLatestRelease } from "@/lib/github";
+import { desc, eq } from "drizzle-orm";
 import { deployBlocker } from "@/lib/deploy";
 import { railwayConfigured, railwayProjectUrl } from "@/lib/railway";
 import { config } from "@/lib/config";
 import { teardownPlan } from "@/lib/teardown";
+import type { Customer } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const row = await getCustomerBySlug(slug);
   if (!row) notFound();
+  if (isRequestStatus(row.status)) return <RequestPage c={row} />;
   const { latest, customer } = await loadCustomerDetail(row);
   const c = customer.customer;
   const repo = customer.repo;
@@ -202,6 +208,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-2"><span className="mono truncate">{repoUrl}</span><CopyButton text={repoUrl} /></div>
               {c.appUrl && <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl}</span><CopyButton text={c.appUrl} /></div>}
+              {c.contactEmail && c.appUrl && (
+                <a className="btn btn-sm" href={`mailto:${c.contactEmail}?subject=${encodeURIComponent(`Entry Accounting — ${c.displayName} системийн хаяг`)}&body=${encodeURIComponent(`Сайн байна уу, ${c.contactName ?? ""}.\n\n${c.displayName}-ийн Entry Accounting систем бэлэн боллоо:\n${c.appUrl}\n\nДээрх хаягаар орж «Бүртгүүлэх» дарж анхны админ хэрэглэгчээ үүсгэнэ үү.\n`)}`}>
+                  Хаягийг имэйлээр илгээх
+                </a>
+              )}
               <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl ?? "https://<app>"}/api/mcp</span><CopyButton text={`${c.appUrl ?? "https://<app>"}/api/mcp`} label="MCP URL" /></div>
             </div>
           </Section>
@@ -212,6 +223,71 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
 
           <Section title="Аюултай бүс" sub="Гэрээ дууссан, эсвэл туршилтын харилцагчийг цэвэрлэх">
             <DestroyForm slug={slug} items={destroyItems} warnings={plan.warnings} />
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Хүсэлт (pending/rejected) — repo, Railway хараахан байхгүй тул тусдаа, энгийн хуудас. */
+async function RequestPage({ c }: { c: Customer }) {
+  const [latest, events] = await Promise.all([
+    getLatestRelease().catch(() => null),
+    db.select().from(customerEvents).where(eq(customerEvents.customerId, c.id)).orderBy(desc(customerEvents.createdAt)).limit(20),
+  ]);
+  const mail = c.contactEmail ? `mailto:${c.contactEmail}?subject=${encodeURIComponent(`Entry Accounting — ${c.displayName}`)}` : null;
+  return (
+    <div className="space-y-5">
+      <div>
+        <Link href="/customers?status=pending" className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1"><Icons.arrowLeft className="h-3.5 w-3.5" /> Хүсэлтүүд</Link>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight">{c.displayName}</h1>
+          <StatusBadge status={c.status} />
+          <span className="badge badge-muted badge-plain">{SOURCE_LABELS[c.source] ?? c.source}</span>
+        </div>
+        <p className="mt-1 text-sm text-text-3">Хүсэлт ирсэн {fmtDate(c.createdAt)} ({fmtAgo(c.createdAt)}){c.decidedAt && <> · шийдвэр {fmtDate(c.decidedAt)}</>}</p>
+      </div>
+
+      {c.status === "rejected" && (
+        <div className="notice notice-warning"><strong>Татгалзсан.</strong> {c.decisionNote ?? "Шалтгаан бичээгүй."} Доорх маягтаар дахин батлах боломжтой.</div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Section title={c.status === "pending" ? "Батлах" : "Дахин батлах"} sub="Батлахад core repo дээр provision workflow → GitHub repo → (автомат бол) Railway app + Postgres. Хүсэлт гаргагчид та өөрөө хаягийг нь илгээнэ.">
+            <ApproveForm customer={c} latestTag={latest?.tagName ?? null} owner={config.owner} railwayOn={railwayConfigured()} />
+          </Section>
+          <Section title="Түүх">
+            <ul className="divide-y divide-border text-sm">
+              {events.map((e) => (
+                <li key={e.id} className="flex gap-3 py-2.5">
+                  <span className="w-16 shrink-0 text-xs text-text-3" title={fmtDate(e.createdAt)}>{fmtAgo(e.createdAt)}</span>
+                  <span className="badge badge-muted badge-plain shrink-0">{EVENT_LABELS[e.type] ?? e.type}</span>
+                  <span className="text-text-2">{e.message}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </div>
+        <div className="space-y-4">
+          <Section title="Хүсэлтийн мэдээлэл">
+            <dl className="space-y-2 text-sm">
+              <Row k="Хүссэн код" v={<span className="mono">entry-{c.slug}</span>} />
+              <Row k="ТТД" v={c.registerNo ?? "—"} />
+              <Row k="Холбоо барих" v={c.contactName ?? "—"} />
+              <Row k="Утас" v={c.contactPhone ?? "—"} />
+              <Row k="Имэйл" v={mail ? <a href={mail} className="hover:underline">{c.contactEmail}</a> : "—"} />
+            </dl>
+            {c.requestNote && <p className="mt-3 rounded-md bg-surface-2 p-3 text-sm text-text-2">«{c.requestNote}»</p>}
+          </Section>
+          {c.status === "pending" && (
+            <Section title="Татгалзах" sub="Бүртгэл лавлагаанд үлдэнэ">
+              <RejectForm slug={c.slug} />
+            </Section>
+          )}
+          <Section title="Аюултай бүс" sub="Repo, Railway байхгүй — зөвхөн энэ бүртгэл устна">
+            <DeleteRequestButton slug={c.slug} />
           </Section>
         </div>
       </div>

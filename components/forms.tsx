@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import {
   addNote,
+  approveRequestAction,
+  approveRequestQuick,
   attachExtras,
   backupNow,
   cleanupOrphanVolumes,
@@ -18,13 +20,14 @@ import {
   inviteUser,
   provisionCustomer,
   redeployCustomer,
+  rejectRequestAction,
   setAutoDeploy,
   setCustomerStatus,
   syncAllCustomers,
   syncCustomer,
   updateCustomer,
 } from "@/lib/actions";
-import type { Customer, CustomerStatus } from "@/lib/db/schema";
+import { isRequestStatus, type Customer, type CustomerStatus } from "@/lib/db/schema";
 import { PLAN_LABELS, STATUS_LABELS } from "./ui";
 import { Icons } from "./icons";
 
@@ -150,7 +153,7 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
         </Field>
         <Field label="Төлөв">
           <select name="status" className="select" defaultValue={customer.status}>
-            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(STATUS_LABELS).filter(([k]) => !isRequestStatus(k as CustomerStatus) || k === customer.status).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field>
         <Field label="Багц">
@@ -393,5 +396,99 @@ export function CopyButton({ text, label = "Хуулах" }: { text: string; lab
     <button type="button" className="btn btn-ghost btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* */ } }}>
       {done ? "Хуулагдлаа" : label}
     </button>
+  );
+}
+
+// ── Бүртгүүлэх хүсэлт: батлах / татгалзах ──────────────────────────────────
+
+/** Самбарын жагсаалтад — нэг товчоор батлах (сүүлийн release, автомат deploy). */
+export function QuickApproveButton({ slug }: { slug: string }) {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button className="btn btn-sm btn-primary" disabled={pending}
+        onClick={() => { if (!confirm("Батлах уу? GitHub repo + Railway app/DB автоматаар үүснэ (~5 мин).")) return; start(async () => { const r = await approveRequestQuick(slug); setResult(r); if (r.ok) router.refresh(); }); }}>
+        <Icons.check className="h-4 w-4" /> {pending ? "…" : "Батлах"}
+      </button>
+      {result && !result.ok && <span className="text-xs text-danger">{result.error}</span>}
+    </span>
+  );
+}
+
+/** Харилцагчийн хуудас — батлахдаа код, багц, төлбөр, core ref, GitHub эрхийг засаж болно. */
+export function ApproveForm({ customer, latestTag, owner, railwayOn }: { customer: Customer; latestTag: string | null; owner: string; railwayOn: boolean }) {
+  const bound = approveRequestAction.bind(null, customer.slug);
+  const [result, action, pending] = useActionState(bound, null);
+  const [slug, setSlug] = useState(customer.slug);
+  const slugOk = /^[a-z0-9][a-z0-9-]{1,30}$/.test(slug);
+  return (
+    <form action={action} className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Харилцагчийн нэр *"><input name="display_name" className="input" defaultValue={customer.displayName} required /></Field>
+        <Field label="Код (repo нэр) *" hint="Батласны дараа өөрчлөгдөхгүй">
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-text-3">entry-</span>
+            <input name="slug" className="input mono" value={slug} pattern="[a-z0-9][a-z0-9-]{1,30}" aria-invalid={!slugOk || undefined} onChange={(e) => setSlug(e.target.value.toLowerCase())} />
+          </div>
+          {slugOk && <p className="mono mt-1.5 text-text-2">→ github.com/{owner}/entry-{slug}</p>}
+        </Field>
+        <Field label="Багц">
+          <select name="plan" className="select" defaultValue={customer.plan}>
+            {Object.entries(PLAN_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </Field>
+        <Field label="Сарын төлбөр (₮)"><input name="monthly_fee" className="input" inputMode="decimal" defaultValue={customer.monthlyFee} /></Field>
+        <Field label="Эхлүүлэх core хувилбар" hint="Release tag эсвэл main"><input name="ref" className="input mono" defaultValue={latestTag ?? "main"} /></Field>
+        <Field label="GitHub хэрэглэгчид (Write эрх)" hint="Таслалаар · заавал биш"><input name="github_users" className="input" placeholder="bat-erdene" /></Field>
+        {railwayOn && (
+          <Field label="Хостинг" hint="Railway дээр app + Postgres автоматаар (~5 мин)">
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
+              <input type="checkbox" name="auto_deploy" defaultChecked className="h-4 w-4 accent-[var(--ea-primary)]" />
+              Repo бэлэн болмогц Railway-д deploy
+            </label>
+          </Field>
+        )}
+        <Field label="Тэмдэглэл (дотоод)"><input name="note" className="input" placeholder="Утсаар ярьсан, pilot 3 сар…" /></Field>
+      </div>
+      <Notice result={result} />
+      <button className="btn btn-primary" type="submit" disabled={pending || !slugOk}>
+        <Icons.check className="h-4 w-4" /> {pending ? "Батлаж байна…" : "Батлах → repo, Railway үүсгэх"}
+      </button>
+    </form>
+  );
+}
+
+export function RejectForm({ slug }: { slug: string }) {
+  const [reason, setReason] = useState("");
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <div className="space-y-2">
+      <input className="input" placeholder="Шалтгаан (заавал биш)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <button className="btn btn-sm btn-danger" disabled={pending}
+        onClick={() => { if (!confirm("Хүсэлтийг татгалзах уу? Бүртгэл лавлагаанд үлдэнэ, дараа нь батлах боломжтой.")) return; start(async () => { const r = await rejectRequestAction(slug, reason); setResult(r); if (r.ok) router.refresh(); }); }}>
+        {pending ? "…" : "Татгалзах"}
+      </button>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+/** Хүсэлт (repo/Railway-гүй) устгах — зөвхөн console бүртгэл. */
+export function DeleteRequestButton({ slug }: { slug: string }) {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <div className="space-y-2">
+      <button className="btn btn-sm btn-danger" disabled={pending}
+        onClick={() => { if (!confirm("Хүсэлтийг бүрмөсөн устгах уу?")) return; start(async () => { const r = await destroyCustomerAction(slug, slug); setResult(r); if (r.ok) router.push("/customers?status=pending"); }); }}>
+        {pending ? "…" : "Хүсэлт устгах"}
+      </button>
+      <Notice result={result} />
+    </div>
   );
 }
