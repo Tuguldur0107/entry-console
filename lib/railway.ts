@@ -278,6 +278,11 @@ export async function deployCustomer(input: {
           DATABASE_URL: "${{" + pgName + ".DATABASE_URL}}",
           NEXT_PUBLIC_APP_URL: `https://${domain}`,
           NODE_ENV: "production",
+          // NextAuth v5 нь proxy-ийн ард host-оо итгэдэггүй — үүнгүйгээр
+          // нэвтрэх/бүртгүүлэх «UntrustedHost»-оор унана. Core дээр
+          // trustHost: true болсон ч хуучин хувилбар дээрх (эсвэл sync
+          // аваагүй) харилцагч ажиллахын тулд энд ч тавина.
+          AUTH_TRUST_HOST: "true",
           // AUTH_SECRET-ийг дахин deploy-д солихгүй (session-ууд хүчингүй болно)
           ...(appExisting ? {} : { AUTH_SECRET: randomBytes(32).toString("base64") }),
         },
