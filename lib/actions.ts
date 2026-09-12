@@ -279,9 +279,12 @@ export async function bootstrapWorkflow(slug: string): Promise<ActionResult> {
   const customer = await getCustomerBySlug(slug);
   if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
   try {
-    const result = await bootstrapSyncWorkflow(customer);
+    const { updated, checked } = await bootstrapSyncWorkflow(customer);
     revalidatePath(`/customers/${slug}`);
-    return { ok: true, message: result === "updated" ? "Workflow шинэчлэгдлээ — одоо sync ажиллана" : "Аль хэдийн core-тэй ижил" };
+    return {
+      ok: true,
+      message: updated.length ? `Шинэчлэгдлээ: ${updated.join(", ")}` : `${checked} workflow аль хэдийн core-тэй ижил`,
+    };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
@@ -295,6 +298,10 @@ export async function syncCustomer(slug: string, ref?: string): Promise<ActionRe
   if (!customer.upstreamAccess)
     return { ok: false, error: "Шинэчлэлт авах эрх цуцлагдсан — эхлээд эрхийг сэргээнэ үү" };
   try {
+    // Sync эхлэхийн ӨМНӨ workflow файлуудыг тэнцүүлнэ: тэгвэл sync салбарт
+    // workflow-ийн ӨӨРЧЛӨЛТ үлдэхгүй тул GITHUB_TOKEN-оор push хийгдэнэ
+    // (үгүй бол GitHub «workflows permission» гэж татгалзана).
+    await bootstrapSyncWorkflow(customer).catch(() => undefined);
     const target = ref?.trim() || (await getLatestRelease())?.tagName || "main";
     const branch = await getDefaultBranch(customer.githubRepo);
     await dispatchWorkflow(customer.githubRepo, "upstream-sync.yml", branch, { ref: target });

@@ -9,6 +9,7 @@ import { attachBackupsAndDomain } from "./deploy";
 import { logEvent } from "./customers";
 import { db } from "./db";
 import { ensureSchema } from "./db/ensure";
+import { bootstrapSyncWorkflow } from "./upstream-access";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
 import { notify } from "./notify";
@@ -155,6 +156,7 @@ export async function runMonitor(): Promise<MonitorSummary> {
           const recent = runs[0] && now.getTime() - new Date(runs[0].createdAt).getTime() < 30 * 60 * 1000;
           if (!running && !recent) {
             const branch = await getDefaultBranch(c.githubRepo);
+            await bootstrapSyncWorkflow(c).catch(() => undefined);
             await dispatchWorkflow(c.githubRepo, "upstream-sync.yml", branch, { ref: latest!.tagName });
             summary.synced.push(c.slug);
             await logEvent(c.id, "sync", `Авто sync эхэллээ: ${latest!.tagName}`);

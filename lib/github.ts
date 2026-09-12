@@ -330,6 +330,19 @@ export async function getFile(fullName: string, path: string, ref?: string): Pro
   }
 }
 
+/** Хавтасны файлуудыг жагсаана (хавтас байхгүй бол хоосон). */
+export async function listDir(fullName: string, path: string, ref?: string): Promise<{ name: string; path: string }[]> {
+  try {
+    const rows = await gh<{ name: string; path: string; type: string }[]>(
+      `/repos/${fullName}/contents/${path}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`
+    );
+    return Array.isArray(rows) ? rows.filter((r) => r.type === "file").map((r) => ({ name: r.name, path: r.path })) : [];
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return [];
+    throw error;
+  }
+}
+
 /** Файл бичих/шинэчлэх. `.github/workflows/` бичихэд token-д `workflow` scope хэрэгтэй. */
 export async function putFile(
   fullName: string,

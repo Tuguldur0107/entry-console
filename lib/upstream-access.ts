@@ -24,6 +24,7 @@ import { customers, type Customer } from "./db/schema";
 import {
   addDeployKey,
   getFile,
+  listDir,
   putFile,
   deleteDeployKey,
   deleteRepoSecret,
@@ -177,26 +178,49 @@ export async function revokeUpstreamAccess(customer: Customer, reason?: string):
  *
  * Шинэ харилцагчид хэрэггүй — тэд зөв workflow-тойгоо seed хийгддэг.
  */
-const SYNC_WORKFLOW = ".github/workflows/upstream-sync.yml";
+const WORKFLOW_DIR = ".github/workflows";
 
-export async function bootstrapSyncWorkflow(customer: Customer): Promise<"updated" | "already-current"> {
-  const core = await getFile(config.coreRepo, SYNC_WORKFLOW);
-  if (!core) throw new UpstreamAccessError(`${config.coreRepo} дээр ${SYNC_WORKFLOW} олдсонгүй`);
-  const mine = await getFile(customer.githubRepo, SYNC_WORKFLOW);
-  if (mine && mine.content === core.content) return "already-current";
-  try {
-    await putFile(
-      customer.githubRepo,
-      SYNC_WORKFLOW,
-      core.content,
-      "Upstream sync workflow-г core-ийн хувилбартай тэнцүүлэв (Entry Console)",
-      mine?.sha
-    );
-  } catch (error) {
-    if (error instanceof GitHubError && (error.status === 403 || error.status === 422))
-      throw new UpstreamAccessError(`Workflow файл бичиж чадсангүй: ${error.message} — GITHUB_TOKEN-д \`workflow\` scope хэрэгтэй`);
-    throw error;
+/**
+ * Харилцагчийн БҮХ workflow файлыг core-ийнхтэй тэнцүүлнэ.
+ *
+ * Хоёр асуудлыг зэрэг шийднэ:
+ *
+ *  1. «Тахиа-өндөг»: sync нь өөрийн workflow-гоо шинэчлэх ёстой ч хуучин
+ *     workflow нь шинэ механизмыг мэдэхгүй.
+ *  2. GITHUB_TOKEN нь `.github/workflows/` доторх файлыг push хийж ЧАДАХГҮЙ.
+ *     Гэхдээ энэ хориг нь ӨӨРЧЛӨЛТ дээр л ажилладаг: push хийж буй салбарын
+ *     workflow файлууд repo-д байгаагаас ЯЛГААГҮЙ бол push давна. Тиймээс
+ *     sync эхлэхийн өмнө файлуудыг тэнцүүлчихвэл ердийн token-оор push хийгдэнэ
+ *     (org дээр deploy key хориотой байсан ч ажиллана).
+ *
+ * Console-ийн token-д `workflow` scope байдаг тул шууд бичиж чадна.
+ */
+export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updated: string[]; checked: number }> {
+  const files = await listDir(config.coreRepo, WORKFLOW_DIR);
+  if (files.length === 0) throw new UpstreamAccessError(`${config.coreRepo} дээр ${WORKFLOW_DIR} олдсонгүй`);
+  const updated: string[] = [];
+  for (const f of files) {
+    const core = await getFile(config.coreRepo, f.path);
+    if (!core) continue;
+    const mine = await getFile(customer.githubRepo, f.path).catch(() => null);
+    if (mine && mine.content === core.content) continue;
+    try {
+      await putFile(
+        customer.githubRepo,
+        f.path,
+        core.content,
+        `${f.name}-г core-ийн хувилбартай тэнцүүлэв (Entry Console)`,
+        mine?.sha
+      );
+      updated.push(f.name);
+    } catch (error) {
+      if (error instanceof GitHubError && (error.status === 403 || error.status === 422))
+        throw new UpstreamAccessError(
+          `${f.name} бичиж чадсангүй: ${error.message} — GITHUB_TOKEN-д \`workflow\` scope хэрэгтэй`
+        );
+      throw error;
+    }
   }
-  await logEvent(customer.id, "access", "Sync workflow core-ийн хувилбартай тэнцүүлэгдэв");
-  return "updated";
+  if (updated.length) await logEvent(customer.id, "access", `Workflow тэнцүүлэв: ${updated.join(", ")}`);
+  return { updated, checked: files.length };
 }

@@ -64,7 +64,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ slug
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
   try {
     const result = await bootstrapSyncWorkflow(customer);
-    return Response.json({ ok: true, result });
+    return Response.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof UpstreamAccessError) return Response.json({ ok: false, error: error.message }, { status: 422 });
     return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
@@ -83,6 +83,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     );
   const body = (await request.json().catch(() => ({}))) as { ref?: string };
   try {
+    // Workflow файлуудыг урьдчилан тэнцүүлнэ — доорх «Push» тайлбарыг үзнэ үү
+    await bootstrapSyncWorkflow(customer).catch(() => undefined);
     const target = body.ref?.trim() || (await getLatestRelease())?.tagName || "main";
     const branch = await getDefaultBranch(customer.githubRepo);
     await dispatchWorkflow(customer.githubRepo, "upstream-sync.yml", branch, { ref: target });
