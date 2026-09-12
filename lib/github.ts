@@ -530,6 +530,33 @@ export async function listOpenSyncPulls(fullName: string): Promise<PullInfo[]> {
     .map((p) => ({ number: p.number, title: p.title, htmlUrl: p.html_url, headRef: p.head.ref, headSha: p.head.sha, labels: p.labels.map((l) => l.name), mergeable: null, mergeableState: "unknown" }));
 }
 
+export async function listBranches(fullName: string, prefix = ""): Promise<{ name: string; sha: string }[]> {
+  const rows = await gh<{ name: string; commit: { sha: string } }[]>(`/repos/${fullName}/branches?per_page=100`);
+  return rows.filter((b) => b.name.startsWith(prefix)).map((b) => ({ name: b.name, sha: b.commit.sha }));
+}
+
+export async function createPull(
+  fullName: string,
+  opts: { head: string; base: string; title: string; body: string }
+): Promise<{ number: number; htmlUrl: string }> {
+  const p = await gh<{ number: number; html_url: string }>(`/repos/${fullName}/pulls`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+  return { number: p.number, htmlUrl: p.html_url };
+}
+
+/** Label үүсгээд (байхгүй бол) issue/PR дээр тавина. */
+export async function addLabel(fullName: string, number: number, label: string, color: string, description: string): Promise<void> {
+  await gh<void>(`/repos/${fullName}/labels`, { method: "POST", body: JSON.stringify({ name: label, color, description }) }).catch(
+    (error) => {
+      // 422 = аль хэдийн бий
+      if (!(error instanceof GitHubError && error.status === 422)) throw error;
+    }
+  );
+  await gh<void>(`/repos/${fullName}/issues/${number}/labels`, { method: "POST", body: JSON.stringify({ labels: [label] }) });
+}
+
 export async function mergePull(fullName: string, number: number, title: string): Promise<void> {
   await gh<void>(`/repos/${fullName}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", commit_title: title }) });
 }

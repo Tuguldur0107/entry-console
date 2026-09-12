@@ -2,11 +2,13 @@
 //   POST /api/customers/<slug>/sync  {"ref":"v1.2.0"}  (ref өгөхгүй бол core-ийн сүүлийн release)
 //   GET  /api/customers/<slug>/sync[?log=1]  → сүүлийн ажиллагаа, унасан алхам, secret төлөв
 //   PUT  /api/customers/<slug>/sync          → sync workflow-г core-ийнхтэй тэнцүүлэх
+//   PATCH /api/customers/<slug>/sync         → sync салбар бүрд PR нээх (үр дүнгийн label-тай)
 import { authorized } from "../../auth";
 import { getCustomerBySlug, logEvent } from "@/lib/customers";
 import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogHead, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
 import { config } from "@/lib/config";
 import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
+import { openSyncPulls } from "@/lib/sync-pr";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +60,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       actionsPermissions: { repo: repoPerms, org: orgPerms },
       runs: detailed,
     });
+  } catch (error) {
+    return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+  }
+}
+
+/** PATCH — sync салбар бүрд PR нээнэ (workflow нээдэггүй; дэлгэрэнгүй lib/sync-pr.ts). */
+export async function PATCH(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!(await authorized(request))) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const { slug } = await params;
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
+  try {
+    const branch = await getDefaultBranch(customer.githubRepo);
+    const opened = await openSyncPulls(customer, branch);
+    return Response.json({ ok: true, opened });
   } catch (error) {
     return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
   }

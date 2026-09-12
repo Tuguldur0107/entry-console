@@ -10,6 +10,7 @@ import { logEvent } from "./customers";
 import { db } from "./db";
 import { ensureSchema } from "./db/ensure";
 import { bootstrapSyncWorkflow } from "./upstream-access";
+import { openSyncPulls } from "./sync-pr";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
 import { notify } from "./notify";
@@ -134,6 +135,13 @@ export async function runMonitor(): Promise<MonitorSummary> {
     // 3. Авто sync: PR merge (шалгалт давсан) + хоцорсон бол sync эхлүүлэх
     if (c.autoSync && c.status === "active" && c.upstreamAccess) {
       try {
+        // Workflow нь PR нээдэггүй (GITHUB_TOKEN татгалздаг) — console нээнэ
+        const branch0 = await getDefaultBranch(c.githubRepo).catch(() => "main");
+        const newly = await openSyncPulls(c, branch0).catch((e) => {
+          summary.errors.push(`${c.slug} PR нээх: ${msg(e)}`);
+          return [];
+        });
+        if (newly.length) summary.synced.push(...newly.map((p) => `${c.slug}#${p.number}`));
         const pulls = await listOpenSyncPulls(c.githubRepo);
         let note: string | null = null;
         for (const p of pulls) {
