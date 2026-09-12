@@ -302,6 +302,32 @@ export async function listWorkflowRuns(
   }
 }
 
+export interface RunStep {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface RunJob {
+  name: string;
+  conclusion: string | null;
+  htmlUrl: string;
+  steps: RunStep[];
+}
+
+/** Ажиллагааны алхмууд — sync яагаад унасныг лог татахгүйгээр олоход. */
+export async function listRunJobs(fullName: string, runId: number): Promise<RunJob[]> {
+  const r = await gh<{
+    jobs: { name: string; conclusion: string | null; html_url: string; steps?: { name: string; status: string; conclusion: string | null }[] }[];
+  }>(`/repos/${fullName}/actions/runs/${runId}/jobs`);
+  return r.jobs.map((j) => ({
+    name: j.name,
+    conclusion: j.conclusion,
+    htmlUrl: j.html_url,
+    steps: (j.steps ?? []).map((st) => ({ name: st.name, status: st.status, conclusion: st.conclusion })),
+  }));
+}
+
 export async function dispatchWorkflow(
   fullName: string,
   workflowFile: string,
