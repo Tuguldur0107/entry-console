@@ -8,7 +8,8 @@ import { getCustomerBySlug, logEvent } from "@/lib/customers";
 import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogHead, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
 import { config } from "@/lib/config";
 import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
-import { openSyncPulls } from "@/lib/sync-pr";
+import { latestSyncResult, openSyncPulls } from "@/lib/sync-pr";
+import { listBranches, listOpenSyncPulls } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +23,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const customer = await getCustomerBySlug(slug);
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
   try {
-    const [runs, sshKey, pushKey, legacyToken, repoPerms, orgPerms] = await Promise.all([
+    const [runs, sshKey, pushKey, legacyToken, repoPerms, orgPerms, syncBranches, openPulls, verdict] = await Promise.all([
       listWorkflowRuns(customer.githubRepo, "upstream-sync.yml", 3),
       hasRepoSecret(customer.githubRepo, SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, PUSH_SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, "UPSTREAM_TOKEN").catch(() => false),
       getActionsPermissions(customer.githubRepo).catch((e) => ({ error: String(e) })),
       getOrgActionsPermissions(config.owner).catch((e) => ({ error: String(e) })),
+      listBranches(customer.githubRepo, "upstream-sync/").catch(() => []),
+      listOpenSyncPulls(customer.githubRepo).catch(() => []),
+      latestSyncResult(customer.githubRepo).catch(() => ({ result: "unknown" as const, runUrl: null })),
     ]);
     const wantLog = new URL(request.url).searchParams.get("log") === "1";
     const detailed = await Promise.all(
@@ -58,6 +62,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       upstreamAccess: customer.upstreamAccess,
       secrets: { [SECRET_NAME]: sshKey, [PUSH_SECRET_NAME]: pushKey, UPSTREAM_TOKEN: legacyToken },
       actionsPermissions: { repo: repoPerms, org: orgPerms },
+      syncBranches: syncBranches.map((b) => b.name),
+      openSyncPulls: openPulls.map((p) => ({ number: p.number, head: p.headRef, labels: p.labels })),
+      verdict,
       runs: detailed,
     });
   } catch (error) {
