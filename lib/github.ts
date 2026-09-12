@@ -169,10 +169,15 @@ export async function listDeployKeys(fullName: string): Promise<DeployKey[]> {
   return rows.map((k) => ({ id: k.id, title: k.title, readOnly: k.read_only, createdAt: k.created_at }));
 }
 
-export async function addDeployKey(fullName: string, title: string, publicKey: string): Promise<DeployKey> {
+export async function addDeployKey(
+  fullName: string,
+  title: string,
+  publicKey: string,
+  opts: { readOnly?: boolean } = {}
+): Promise<DeployKey> {
   const k = await gh<{ id: number; title: string; read_only: boolean; created_at: string }>(
     `/repos/${fullName}/keys`,
-    { method: "POST", body: JSON.stringify({ title, key: publicKey, read_only: true }) }
+    { method: "POST", body: JSON.stringify({ title, key: publicKey, read_only: opts.readOnly !== false }) }
   );
   return { id: k.id, title: k.title, readOnly: k.read_only, createdAt: k.created_at };
 }
@@ -300,6 +305,42 @@ export async function listWorkflowRuns(
     if (error instanceof GitHubError && error.status === 404) return [];
     throw error;
   }
+}
+
+export interface RepoFile {
+  /** base64-гүй, задлагдсан агуулга */
+  content: string;
+  sha: string;
+}
+
+export async function getFile(fullName: string, path: string, ref?: string): Promise<RepoFile | null> {
+  try {
+    const f = await gh<{ content: string; encoding: string; sha: string }>(
+      `/repos/${fullName}/contents/${path}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`
+    );
+    return { content: Buffer.from(f.content, "base64").toString("utf8"), sha: f.sha };
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Файл бичих/шинэчлэх. `.github/workflows/` бичихэд token-д `workflow` scope хэрэгтэй. */
+export async function putFile(
+  fullName: string,
+  path: string,
+  content: string,
+  message: string,
+  sha?: string
+): Promise<void> {
+  await gh<void>(`/repos/${fullName}/contents/${path}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }),
+  });
 }
 
 /** Ажлын логийн сүүл — алдааны яг мөрийг харах (зөвхөн оношлогоонд). */

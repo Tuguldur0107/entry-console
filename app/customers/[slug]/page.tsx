@@ -148,7 +148,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
             <div className="mt-4 border-t border-border pt-4">
               <div className="mb-2 text-xs font-medium text-text-3">Шинэчлэлт авах эрх (захиалгын гарц)</div>
               {access ? (
-                <UpstreamAccessPanel slug={slug} granted={access.granted} keyOnCore={access.keyOnCore} secretOnRepo={access.secretOnRepo} />
+                <UpstreamAccessPanel slug={slug} granted={access.granted} keyOnCore={access.keyOnCore} secretOnRepo={access.secretOnRepo} pushKeyReady={access.pushKeyReady} />
               ) : (
                 <p className="text-sm text-text-3">Repo бэлэн болсны дараа харагдана.</p>
               )}

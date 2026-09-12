@@ -14,7 +14,7 @@ import { destroyCustomer, TeardownError } from "./teardown";
 import { applyStatusTransition, LifecycleError } from "./lifecycle";
 import { attachBackupsAndDomain } from "./deploy";
 import { runMonitor } from "./monitor";
-import { grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
+import { bootstrapSyncWorkflow, grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
@@ -271,6 +271,20 @@ export async function revokeUpstream(slug: string, reason: string): Promise<Acti
   revalidatePath(`/customers/${slug}`);
   revalidatePath("/");
   return { ok: true, message: "Цуцлагдлаа — байгаа код нь ажилласаар байна" };
+}
+
+/** Харилцагчийн sync workflow-г core-ийнхтэй тэнцүүлнэ (хуучин суулгацыг засна). */
+export async function bootstrapWorkflow(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    const result = await bootstrapSyncWorkflow(customer);
+    revalidatePath(`/customers/${slug}`);
+    return { ok: true, message: result === "updated" ? "Workflow шинэчлэгдлээ — одоо sync ажиллана" : "Аль хэдийн core-тэй ижил" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
 }
 
 /** Харилцагчийн repo дээр upstream-sync.yml-ийг заасан ref-ээр ажиллуулна. */

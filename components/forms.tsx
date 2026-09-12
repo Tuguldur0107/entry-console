@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/actions";
 import {
   addNote,
   approveRequestAction,
+  bootstrapWorkflow,
   approveRequestQuick,
   attachExtras,
   backupNow,
@@ -500,23 +501,23 @@ export function DeleteRequestButton({ slug }: { slug: string }) {
  * deploy огт хөндөгдөхгүй; зөвхөн шинэ хувилбарын PR ирэхээ болино
  * (docs/licensing/README.md).
  */
-export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo }: { slug: string; granted: boolean; keyOnCore: boolean; secretOnRepo: boolean }) {
+export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo, pushKeyReady }: { slug: string; granted: boolean; keyOnCore: boolean; secretOnRepo: boolean; pushKeyReady: boolean }) {
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const run = (fn: () => Promise<ActionResult>) => start(async () => { const r = await fn(); setResult(r); if (r.ok) { setConfirming(false); setReason(""); router.refresh(); } });
-  const broken = granted && (!keyOnCore || !secretOnRepo);
+  const broken = granted && (!keyOnCore || !secretOnRepo || !pushKeyReady);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {granted ? <span className="badge badge-success">эрхтэй</span> : <span className="badge badge-muted">цуцлагдсан</span>}
-        <span className="text-text-3">core дээр түлхүүр {keyOnCore ? "✓" : "—"} · repo дээр secret {secretOnRepo ? "✓" : "—"}</span>
+        <span className="text-text-3">core дээр түлхүүр {keyOnCore ? "✓" : "—"} · repo дээр secret {secretOnRepo ? "✓" : "—"} · push түлхүүр {pushKeyReady ? "✓" : "—"}</span>
       </div>
       {broken && (
         <p className="notice notice-warning">
-          Эрхтэй гэж бүртгэгдсэн ч {!keyOnCore ? "core repo дээр deploy key олдсонгүй" : "харилцагчийн repo дээр secret олдсонгүй"}. «Түлхүүр шинэчлэх» дарж сэргээнэ.
+          Эрхтэй гэж бүртгэгдсэн ч {!keyOnCore ? "core repo дээр deploy key олдсонгүй" : !secretOnRepo ? "харилцагчийн repo дээр secret олдсонгүй" : "sync салбар push хийх түлхүүр алга — workflow хөндсөн шинэчлэлт унана"}. «Түлхүүр шинэчлэх» дарж сэргээнэ.
         </p>
       )}
       {!granted && (
@@ -536,6 +537,7 @@ export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo }: 
             <>
               <button className="btn btn-sm btn-danger" disabled={pending} onClick={() => setConfirming(true)}>Эрх цуцлах</button>
               <button className="btn btn-sm" disabled={pending} onClick={() => { if (!confirm("Түлхүүрийг шинэчлэх үү? Хуучин түлхүүр ажиллахаа болино.")) return; run(() => grantUpstream(slug)); }}>{pending ? "…" : "Түлхүүр шинэчлэх"}</button>
+              <button className="btn btn-sm" disabled={pending} title="Харилцагчийн sync workflow-г core-ийнхтэй тэнцүүлнэ — хуучин суулгацад нэг удаа хэрэгтэй" onClick={() => run(() => bootstrapWorkflow(slug))}>{pending ? "…" : "Workflow тэнцүүлэх"}</button>
             </>
           ) : (
             <button className="btn btn-sm btn-primary" disabled={pending} onClick={() => run(() => grantUpstream(slug))}>{pending ? "…" : "Эрх сэргээх"}</button>

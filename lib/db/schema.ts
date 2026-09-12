@@ -85,6 +85,12 @@ export const customers = pgTable("customers", {
   upstreamAccess: boolean("upstream_access").notNull().default(false),
   /** Core repo дээрх deploy key-ийн id — цуцлахад хэрэгтэй */
   upstreamKeyId: integer("upstream_key_id"),
+  /**
+   * Харилцагчийн ӨӨРИЙН repo дээрх БИЧИХ эрхтэй deploy key-ийн id. Sync салбарыг
+   * үүгээр push хийнэ — GITHUB_TOKEN нь `.github/workflows/` файл push хийж
+   * чаддаггүй тул workflow хөндсөн шинэчлэлт үүнгүйгээр унана.
+   */
+  syncPushKeyId: integer("sync_push_key_id"),
   /** Хаанаас бүртгэгдсэн: console маягт | нээлттэй /signup | REST */
   source: text("source").$type<CustomerSource>().notNull().default("console"),
   /** Хүсэлт гаргагчийн тайлбар (/signup) */

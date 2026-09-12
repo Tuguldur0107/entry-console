@@ -1,9 +1,11 @@
 // REST: upstream-sync workflow эхлүүлэх (харилцагчийн хуудасны «Sync PR нээх» товчтой ижил).
 //   POST /api/customers/<slug>/sync  {"ref":"v1.2.0"}  (ref өгөхгүй бол core-ийн сүүлийн release)
+//   GET  /api/customers/<slug>/sync[?log=1]  → сүүлийн ажиллагаа, унасан алхам, secret төлөв
+//   PUT  /api/customers/<slug>/sync          → sync workflow-г core-ийнхтэй тэнцүүлэх
 import { authorized } from "../../auth";
 import { getCustomerBySlug, logEvent } from "@/lib/customers";
 import { dispatchWorkflow, getDefaultBranch, getJobLogTail, getLatestRelease, GitHubError, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
-import { SECRET_NAME } from "@/lib/upstream-access";
+import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +19,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const customer = await getCustomerBySlug(slug);
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
   try {
-    const [runs, sshKey, legacyToken] = await Promise.all([
+    const [runs, sshKey, pushKey, legacyToken] = await Promise.all([
       listWorkflowRuns(customer.githubRepo, "upstream-sync.yml", 3),
       hasRepoSecret(customer.githubRepo, SECRET_NAME).catch(() => false),
+      hasRepoSecret(customer.githubRepo, PUSH_SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, "UPSTREAM_TOKEN").catch(() => false),
     ]);
     const wantLog = new URL(request.url).searchParams.get("log") === "1";
@@ -45,10 +48,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     return Response.json({
       ok: true,
       upstreamAccess: customer.upstreamAccess,
-      secrets: { [SECRET_NAME]: sshKey, UPSTREAM_TOKEN: legacyToken },
+      secrets: { [SECRET_NAME]: sshKey, [PUSH_SECRET_NAME]: pushKey, UPSTREAM_TOKEN: legacyToken },
       runs: detailed,
     });
   } catch (error) {
+    return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+  }
+}
+
+/** PUT — харилцагчийн sync workflow-г core-ийнхтэй тэнцүүлнэ (хуучин суулгац). */
+export async function PUT(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!(await authorized(request))) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const { slug } = await params;
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
+  try {
+    const result = await bootstrapSyncWorkflow(customer);
+    return Response.json({ ok: true, result });
+  } catch (error) {
+    if (error instanceof UpstreamAccessError) return Response.json({ ok: false, error: error.message }, { status: 422 });
     return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 502 });
   }
 }

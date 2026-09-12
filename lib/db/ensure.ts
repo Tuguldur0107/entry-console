@@ -75,6 +75,7 @@ export function ensureSchema(): Promise<void> {
         // Шинэчлэлт авах эрх — харилцагч тус бүрд (v2.4)
         `alter table "customers" add column if not exists "upstream_access" boolean not null default false`,
         `alter table "customers" add column if not exists "upstream_key_id" integer`,
+        `alter table "customers" add column if not exists "sync_push_key_id" integer`,
         `create table if not exists "console_state" ("key" text primary key, "value" jsonb not null, "updated_at" timestamptz not null default now())`,
       ])
         await db.execute(sql.raw(ddl));
