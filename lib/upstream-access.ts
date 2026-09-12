@@ -94,17 +94,35 @@ export async function grantUpstreamAccess(customer: Customer): Promise<Customer>
     // Хоёр дахь түлхүүр: харилцагчийн ӨӨРИЙН repo дээр БИЧИХ эрхтэй. Sync
     // салбарыг үүгээр push хийнэ — GITHUB_TOKEN нь workflow файл push хийж
     // чаддаггүй. Нэг түлхүүрийг хоёр repo-д бүртгэх боломжгүй тул тусдаа хос.
-    const pushExisting = await listDeployKeys(customer.githubRepo).catch(() => []);
-    for (const k of pushExisting) {
-      if (k.id === customer.syncPushKeyId || k.title === PUSH_KEY_TITLE) await deleteDeployKey(customer.githubRepo, k.id);
+    //
+    // Энэ алхам унавал БҮХ эрх олголтыг унагахгүй: унших түлхүүр аль хэдийн
+    // тавигдсан тул workflow ХӨНДӨӨГҮЙ шинэчлэлтүүд хэвийн ажиллана. Push
+    // түлхүүргүйг UI «push түлхүүр —» гэж харуулж анхааруулна.
+    let pushKeyId: number | null = null;
+    try {
+      const pushExisting = await listDeployKeys(customer.githubRepo).catch(() => []);
+      for (const k of pushExisting) {
+        if (k.id === customer.syncPushKeyId || k.title === PUSH_KEY_TITLE) await deleteDeployKey(customer.githubRepo, k.id);
+      }
+      const pushPair = generateSshKeyPair(`entry-${customer.slug}-push`);
+      const pushKey = await addDeployKey(customer.githubRepo, PUSH_KEY_TITLE, pushPair.publicKey, { readOnly: false });
+      await setRepoSecret(customer.githubRepo, PUSH_SECRET_NAME, pushPair.privateKey);
+      pushKeyId = pushKey.id;
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      const hint = /deploy keys are disabled/i.test(why)
+        ? ` — GitHub org «${config.owner}» дээр deploy key хориглогдсон: Organization Settings → Repository → Deploy keys → зөвшөөрөх`
+        : "";
+      await logEvent(
+        customer.id,
+        "access",
+        `Push түлхүүр үүсгэж чадсангүй: ${why}${hint}. Workflow хөндсөн шинэчлэлт энэ харилцагч дээр унана.`
+      );
     }
-    const pushPair = generateSshKeyPair(`entry-${customer.slug}-push`);
-    const pushKey = await addDeployKey(customer.githubRepo, PUSH_KEY_TITLE, pushPair.publicKey, { readOnly: false });
-    await setRepoSecret(customer.githubRepo, PUSH_SECRET_NAME, pushPair.privateKey);
 
     const [next] = await db
       .update(customers)
-      .set({ upstreamKeyId: key.id, syncPushKeyId: pushKey.id, upstreamAccess: true, updatedAt: new Date() })
+      .set({ upstreamKeyId: key.id, syncPushKeyId: pushKeyId, upstreamAccess: true, updatedAt: new Date() })
       .where(eq(customers.id, customer.id))
       .returning();
     await logEvent(customer.id, "access", "Шинэчлэлт авах эрх олгов (шинэ түлхүүр)");
