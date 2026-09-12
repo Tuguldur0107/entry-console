@@ -374,7 +374,18 @@ export async function getJobLogTail(fullName: string, jobId: number, lines = 25)
   });
   if (!response.ok) throw new GitHubError(response.status, `Лог уншиж чадсангүй: ${response.status}`);
   const text = await response.text();
-  return text.split("\n").filter((l) => l.trim()).slice(-lines).join("\n");
+  const all = text.split("\n").filter((l) => l.trim());
+  // Логийн сүүл нь ихэвчлэн post-job цэвэрлэгээ байдаг тул алдааны МӨРҮҮДИЙГ
+  // эрэлхийлж, тэдгээрийн эргэн тойрныг харуулна.
+  const marks = all
+    .map((l, i) => (/##\[error\]|fatal:|error:|!\s\[remote rejected\]|HTTP 4\d\d|HTTP 5\d\d/i.test(l) ? i : -1))
+    .filter((i) => i >= 0);
+  if (marks.length) {
+    const from = Math.max(0, marks[0] - 12);
+    const to = Math.min(all.length, marks[marks.length - 1] + 3);
+    return all.slice(from, to).slice(-lines).join("\n");
+  }
+  return all.slice(-lines).join("\n");
 }
 
 export interface RunStep {
