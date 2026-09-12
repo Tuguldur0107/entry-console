@@ -4,7 +4,7 @@ import { config } from "./config";
 import { getCustomerBySlug, logEvent } from "./customers";
 import { db } from "./db";
 import { CUSTOMER_PLANS, customers, type Customer, type CustomerPlan } from "./db/schema";
-import { dispatchWorkflow, getCustomerRepo, getDefaultBranch } from "./github";
+import { dispatchWorkflow, getCustomerRepo, getDefaultBranch, getFile } from "./github";
 import { railwayConfigured } from "./railway";
 
 export interface ProvisionInput {
@@ -65,8 +65,29 @@ export async function assertSlugFree(slug: string, exceptCustomerId?: string): P
     throw new ProvisionError(`${config.repoPrefix}${slug} repo аль хэдийн бий — самбар нээхэд автоматаар бүртгэгдэнэ`);
 }
 
+/**
+ * Seed ref нь ажиллах чадвартай эсэхийг ШАЛГАНА.
+ *
+ * Харилцагч core-ийн тодорхой ref-ээс seed хийгддэг. Хуучин release (жишээ нь
+ * шинэ sync механизм орохоос өмнөх tag)-аас seed хийвэл тухайн харилцагчийн
+ * upstream-sync ХЭЗЭЭ Ч ажиллахгүй: хуучин workflow нь per-customer SSH
+ * түлхүүрүүдийг уншдаггүй, GITHUB_TOKEN нь workflow файл push хийж чаддаггүй.
+ * Ийм харилцагч «төрөхөөсөө эвдэрсэн» байх тул энд зогсооно.
+ */
+export async function assertSeedRefUsable(ref: string): Promise<void> {
+  const wf = await getFile(config.coreRepo, ".github/workflows/upstream-sync.yml", ref).catch(() => null);
+  if (!wf) throw new ProvisionError(`«${ref}» дээр upstream-sync.yml олдсонгүй — ref буруу байж магадгүй`);
+  const missing = ["UPSTREAM_SSH_KEY", "SYNC_PUSH_KEY"].filter((k) => !wf.content.includes(k));
+  if (missing.length)
+    throw new ProvisionError(
+      `«${ref}» хэт хуучин — sync механизм (${missing.join(", ")}) байхгүй тул энэ харилцагчийн шинэчлэлт хэзээ ч ажиллахгүй. ` +
+        `Шинэ release гаргах (git tag vX.Y.Z && git push origin vX.Y.Z) эсвэл ref-ээ «main» болгоно уу.`
+    );
+}
+
 /** Core repo дээр provision-customer.yml-ийг ажиллуулна (repo үүсэх, core түүх push, урилга). */
 export async function dispatchProvision(p: Pick<NormalizedProvision, "slug" | "displayName" | "githubUsers" | "appUrl" | "ref">): Promise<void> {
+  await assertSeedRefUsable(p.ref);
   const branch = await getDefaultBranch(config.coreRepo);
   await dispatchWorkflow(config.coreRepo, "provision-customer.yml", branch, {
     slug: p.slug,
