@@ -330,6 +330,42 @@ export async function getFile(fullName: string, path: string, ref?: string): Pro
   }
 }
 
+export interface ActionsPermissions {
+  defaultWorkflowPermissions: string;
+  canApprovePullRequestReviews: boolean;
+}
+
+export async function getActionsPermissions(fullName: string): Promise<ActionsPermissions> {
+  const p = await gh<{ default_workflow_permissions: string; can_approve_pull_request_reviews: boolean }>(
+    `/repos/${fullName}/actions/permissions/workflow`
+  );
+  return {
+    defaultWorkflowPermissions: p.default_workflow_permissions,
+    canApprovePullRequestReviews: p.can_approve_pull_request_reviews,
+  };
+}
+
+/**
+ * Actions-ийн эрхийг write + «PR үүсгэх» болгоно. Org-ийн бодлого хориглосон бол
+ * эхлээд org түвшинд нээгээд дахин оролдоно (token-д admin:org хэрэгтэй).
+ * Үүнгүйгээр upstream-sync нь PR нээх гэхэд «Resource not accessible by
+ * integration (createPullRequest)» гэж унана.
+ */
+export async function ensureActionsPermissions(fullName: string, owner: string): Promise<"already" | "repo" | "org+repo"> {
+  const current = await getActionsPermissions(fullName).catch(() => null);
+  if (current?.defaultWorkflowPermissions === "write" && current.canApprovePullRequestReviews) return "already";
+  const body = JSON.stringify({ default_workflow_permissions: "write", can_approve_pull_request_reviews: true });
+  try {
+    await gh<void>(`/repos/${fullName}/actions/permissions/workflow`, { method: "PUT", body });
+    return "repo";
+  } catch (error) {
+    if (!(error instanceof GitHubError) || !/disabled by the organization|not accessible|403/i.test(`${error.status} ${error.message}`)) throw error;
+    await gh<void>(`/orgs/${owner}/actions/permissions/workflow`, { method: "PUT", body });
+    await gh<void>(`/repos/${fullName}/actions/permissions/workflow`, { method: "PUT", body });
+    return "org+repo";
+  }
+}
+
 /** Хавтасны файлуудыг жагсаана (хавтас байхгүй бол хоосон). */
 export async function listDir(fullName: string, path: string, ref?: string): Promise<{ name: string; path: string }[]> {
   try {

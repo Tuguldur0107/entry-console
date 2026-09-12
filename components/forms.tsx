@@ -501,23 +501,23 @@ export function DeleteRequestButton({ slug }: { slug: string }) {
  * deploy огт хөндөгдөхгүй; зөвхөн шинэ хувилбарын PR ирэхээ болино
  * (docs/licensing/README.md).
  */
-export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo, pushKeyReady }: { slug: string; granted: boolean; keyOnCore: boolean; secretOnRepo: boolean; pushKeyReady: boolean }) {
+export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo, pushKeyReady, canOpenPr }: { slug: string; granted: boolean; keyOnCore: boolean; secretOnRepo: boolean; pushKeyReady: boolean; canOpenPr: boolean }) {
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const run = (fn: () => Promise<ActionResult>) => start(async () => { const r = await fn(); setResult(r); if (r.ok) { setConfirming(false); setReason(""); router.refresh(); } });
-  const broken = granted && (!keyOnCore || !secretOnRepo || !pushKeyReady);
+  const broken = granted && (!keyOnCore || !secretOnRepo || !canOpenPr);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {granted ? <span className="badge badge-success">эрхтэй</span> : <span className="badge badge-muted">цуцлагдсан</span>}
-        <span className="text-text-3">core дээр түлхүүр {keyOnCore ? "✓" : "—"} · repo дээр secret {secretOnRepo ? "✓" : "—"} · push түлхүүр {pushKeyReady ? "✓" : "—"}</span>
+        <span className="text-text-3">core дээр түлхүүр {keyOnCore ? "✓" : "—"} · repo дээр secret {secretOnRepo ? "✓" : "—"} · push түлхүүр {pushKeyReady ? "✓" : "—"} · PR үүсгэх эрх {canOpenPr ? "✓" : "—"}</span>
       </div>
       {broken && (
         <p className="notice notice-warning">
-          Эрхтэй гэж бүртгэгдсэн ч {!keyOnCore ? "core repo дээр deploy key олдсонгүй" : !secretOnRepo ? "харилцагчийн repo дээр secret олдсонгүй" : "sync салбар push хийх түлхүүр алга — workflow хөндсөн шинэчлэлт унана"}. «Түлхүүр шинэчлэх» дарж сэргээнэ.
+          Эрхтэй гэж бүртгэгдсэн ч {!keyOnCore ? "core repo дээр deploy key олдсонгүй" : !secretOnRepo ? "харилцагчийн repo дээр secret олдсонгүй" : "Actions нь PR үүсгэж чадахгүй — sync PR нээх алхам дээр унана"}. «Workflow тэнцүүлэх» эсвэл «Түлхүүр шинэчлэх» дарж сэргээнэ.
         </p>
       )}
       {!granted && (

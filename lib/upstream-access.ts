@@ -23,6 +23,8 @@ import { db } from "./db";
 import { customers, type Customer } from "./db/schema";
 import {
   addDeployKey,
+  ensureActionsPermissions,
+  getActionsPermissions,
   getFile,
   listDir,
   putFile,
@@ -53,16 +55,19 @@ export interface UpstreamAccessState {
   secretOnRepo: boolean;
   /** Sync салбар push хийх түлхүүр (workflow файл шинэчлэхэд ЗААВАЛ) */
   pushKeyReady: boolean;
+  /** Actions нь PR үүсгэж чадах эсэх — үгүй бол sync PR нээх алхам дээр унана */
+  canOpenPr: boolean;
   keyId: number | null;
 }
 
 /** GitHub-ийн бодит төлөвийг уншина (DB-тэй зөрж болзошгүй тул хоёуланг нь). */
 export async function upstreamAccessState(customer: Customer): Promise<UpstreamAccessState> {
-  const [keys, secret, pushSecret, pushKeys] = await Promise.all([
+  const [keys, secret, pushSecret, pushKeys, perms] = await Promise.all([
     listDeployKeys(config.coreRepo).catch(() => [] as Awaited<ReturnType<typeof listDeployKeys>>),
     hasRepoSecret(customer.githubRepo, SECRET_NAME).catch(() => false),
     hasRepoSecret(customer.githubRepo, PUSH_SECRET_NAME).catch(() => false),
     listDeployKeys(customer.githubRepo).catch(() => [] as Awaited<ReturnType<typeof listDeployKeys>>),
+    getActionsPermissions(customer.githubRepo).catch(() => null),
   ]);
   const title = keyTitle(customer.slug);
   const live = keys.find((k) => k.id === customer.upstreamKeyId || k.title === title) ?? null;
@@ -72,6 +77,7 @@ export async function upstreamAccessState(customer: Customer): Promise<UpstreamA
     keyOnCore: !!live,
     secretOnRepo: secret,
     pushKeyReady: !!pushLive && pushSecret,
+    canOpenPr: perms?.defaultWorkflowPermissions === "write" && perms.canApprovePullRequestReviews,
     keyId: live?.id ?? customer.upstreamKeyId ?? null,
   };
 }
@@ -195,7 +201,12 @@ const WORKFLOW_DIR = ".github/workflows";
  *
  * Console-ийн token-д `workflow` scope байдаг тул шууд бичиж чадна.
  */
-export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updated: string[]; checked: number }> {
+export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updated: string[]; checked: number; permissions: string }> {
+  // Actions нь PR нээх эрхтэй эсэхийг мөн засна — org-ийн default нь ихэвчлэн
+  // «PR үүсгэхийг хориглох» байдаг тул provision үед тавьсан ч буцаж унтардаг.
+  const permissions = await ensureActionsPermissions(customer.githubRepo, config.owner).catch((e) =>
+    e instanceof Error ? `алдаа: ${e.message}` : "алдаа"
+  );
   const files = await listDir(config.coreRepo, WORKFLOW_DIR);
   if (files.length === 0) throw new UpstreamAccessError(`${config.coreRepo} дээр ${WORKFLOW_DIR} олдсонгүй`);
   const updated: string[] = [];
@@ -222,5 +233,7 @@ export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updat
     }
   }
   if (updated.length) await logEvent(customer.id, "access", `Workflow тэнцүүлэв: ${updated.join(", ")}`);
-  return { updated, checked: files.length };
+  if (permissions === "repo" || permissions === "org+repo")
+    await logEvent(customer.id, "access", `Actions-ийн PR үүсгэх эрхийг нээв (${permissions})`);
+  return { updated, checked: files.length, permissions };
 }
