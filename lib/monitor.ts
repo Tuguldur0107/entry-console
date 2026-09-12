@@ -131,7 +131,7 @@ export async function runMonitor(): Promise<MonitorSummary> {
     }
 
     // 3. Авто sync: PR merge (шалгалт давсан) + хоцорсон бол sync эхлүүлэх
-    if (c.autoSync && c.status === "active") {
+    if (c.autoSync && c.status === "active" && c.upstreamAccess) {
       try {
         const pulls = await listOpenSyncPulls(c.githubRepo);
         let note: string | null = null;

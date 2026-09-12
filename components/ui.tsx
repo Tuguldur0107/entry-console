@@ -26,6 +26,7 @@ export const EVENT_LABELS: Record<string, string> = {
   request: "Хүсэлт",
   approved: "Батлагдсан",
   rejected: "Татгалзсан",
+  access: "Эрх",
 };
 const STATUS_TONE: Record<CustomerStatus, string> = {
   pending: "badge-info",

@@ -150,6 +150,75 @@ export async function setVariable(fullName: string, name: string, value: string)
   }
 }
 
+// ── Deploy key (core repo дээр) ба Actions secret (харилцагчийн repo дээр) ──
+// Хоёулаа «шинэчлэлт авах эрх»-ийн механизмд ордог: core дээр харилцагч бүрд
+// read-only deploy key, харилцагчийн repo-д түүний хувийн түлхүүр secret болж
+// орно. Эрх цуцлах = core дээрх ТЭР НЭГ deploy key-г устгах.
+
+export interface DeployKey {
+  id: number;
+  title: string;
+  readOnly: boolean;
+  createdAt: string;
+}
+
+export async function listDeployKeys(fullName: string): Promise<DeployKey[]> {
+  const rows = await gh<{ id: number; title: string; read_only: boolean; created_at: string }[]>(
+    `/repos/${fullName}/keys?per_page=100`
+  );
+  return rows.map((k) => ({ id: k.id, title: k.title, readOnly: k.read_only, createdAt: k.created_at }));
+}
+
+export async function addDeployKey(fullName: string, title: string, publicKey: string): Promise<DeployKey> {
+  const k = await gh<{ id: number; title: string; read_only: boolean; created_at: string }>(
+    `/repos/${fullName}/keys`,
+    { method: "POST", body: JSON.stringify({ title, key: publicKey, read_only: true }) }
+  );
+  return { id: k.id, title: k.title, readOnly: k.read_only, createdAt: k.created_at };
+}
+
+/** Байхгүй бол чимээгүй өнгөрнө (идемпотент — цуцлалтыг давтаж болно). */
+export async function deleteDeployKey(fullName: string, keyId: number): Promise<void> {
+  try {
+    await gh<void>(`/repos/${fullName}/keys/${keyId}`, { method: "DELETE" });
+  } catch (error) {
+    if (!(error instanceof GitHubError && error.status === 404)) throw error;
+  }
+}
+
+/** Actions secret тавина — утга нь repo-ийн нийтийн түлхүүрээр sealed box болно. */
+export async function setRepoSecret(fullName: string, name: string, value: string): Promise<void> {
+  const pk = await gh<{ key_id: string; key: string }>(`/repos/${fullName}/actions/secrets/public-key`);
+  const sodium = (await import("libsodium-wrappers")).default;
+  await sodium.ready;
+  const sealed = sodium.crypto_box_seal(sodium.from_string(value), sodium.from_base64(pk.key, sodium.base64_variants.ORIGINAL));
+  await gh<void>(`/repos/${fullName}/actions/secrets/${name}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      encrypted_value: sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL),
+      key_id: pk.key_id,
+    }),
+  });
+}
+
+export async function deleteRepoSecret(fullName: string, name: string): Promise<void> {
+  try {
+    await gh<void>(`/repos/${fullName}/actions/secrets/${name}`, { method: "DELETE" });
+  } catch (error) {
+    if (!(error instanceof GitHubError && error.status === 404)) throw error;
+  }
+}
+
+export async function hasRepoSecret(fullName: string, name: string): Promise<boolean> {
+  try {
+    await gh<unknown>(`/repos/${fullName}/actions/secrets/${name}`);
+    return true;
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) return false;
+    throw error;
+  }
+}
+
 /** Repo-г бүрмөсөн устгана — classic token-д `delete_repo` scope шаардана. */
 export async function deleteRepo(fullName: string): Promise<void> {
   await gh<void>(`/repos/${fullName}`, { method: "DELETE" });

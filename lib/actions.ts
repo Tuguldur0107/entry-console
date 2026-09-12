@@ -14,6 +14,7 @@ import { destroyCustomer, TeardownError } from "./teardown";
 import { applyStatusTransition, LifecycleError } from "./lifecycle";
 import { attachBackupsAndDomain } from "./deploy";
 import { runMonitor } from "./monitor";
+import { grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
@@ -39,7 +40,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError || error instanceof UpstreamAccessError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -240,11 +241,45 @@ export async function updateCustomer(
   return { ok: true, message: transitionNote ? `Хадгалагдлаа · ${transitionNote}` : "Хадгалагдлаа" };
 }
 
+// ── Шинэчлэлт авах эрх (захиалгын гарц) ──────────────────────────────────────
+
+/** Эрх олгоно / түлхүүрийг шинэчилнэ (core дээр deploy key + repo-д secret). */
+export async function grantUpstream(slug: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    await grantUpstreamAccess(customer);
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath(`/customers/${slug}`);
+  revalidatePath("/");
+  return { ok: true, message: customer.upstreamAccess ? "Түлхүүр шинэчлэгдлээ" : "Эрх олгогдлоо — шинэчлэлт ирнэ" };
+}
+
+/** Эрх цуцална — байгаа код, deploy хэвээр; зөвхөн шинэ хувилбар ирэхээ болино. */
+export async function revokeUpstream(slug: string, reason: string): Promise<ActionResult> {
+  await requireSession();
+  const customer = await getCustomerBySlug(slug);
+  if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  try {
+    await revokeUpstreamAccess(customer, reason);
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  revalidatePath(`/customers/${slug}`);
+  revalidatePath("/");
+  return { ok: true, message: "Цуцлагдлаа — байгаа код нь ажилласаар байна" };
+}
+
 /** Харилцагчийн repo дээр upstream-sync.yml-ийг заасан ref-ээр ажиллуулна. */
 export async function syncCustomer(slug: string, ref?: string): Promise<ActionResult> {
   await requireSession();
   const customer = await getCustomerBySlug(slug);
   if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
+  if (!customer.upstreamAccess)
+    return { ok: false, error: "Шинэчлэлт авах эрх цуцлагдсан — эхлээд эрхийг сэргээнэ үү" };
   try {
     const target = ref?.trim() || (await getLatestRelease())?.tagName || "main";
     const branch = await getDefaultBranch(customer.githubRepo);
@@ -313,6 +348,11 @@ export async function syncAllCustomers(): Promise<ActionResult> {
   let skipped = 0;
   const failed: string[] = [];
   for (const row of rows) {
+    // Эрх цуцлагдсан харилцагч руу шинэчлэлт явуулахгүй (захиалгын гарц)
+    if (!row.upstreamAccess) {
+      skipped += 1;
+      continue;
+    }
     // Аль хэдийн target хувилбар дээр байгаа (health.version таарсан) бол алгасна —
     // самбарын товчны тоолуур (behind !== false || health алга)-тай ижил дүрэм.
     const health = await fetchHealth(row.appUrl);

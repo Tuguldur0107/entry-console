@@ -1,6 +1,9 @@
 // REST: нэг харилцагч — унших / бүрэн устгах. Нэвтрэлт /api/customers-тай ижил.
 //   GET    /api/customers/<slug>            → бүртгэл (DB)
-//   PATCH  /api/customers/<slug>  {"status":"suspended"|"active"|"archived", "autoSync":true|false, "autoDeploy":true|false}
+//   PATCH  /api/customers/<slug>  {"status":…, "autoSync":…, "autoDeploy":…,
+//                                   "upstreamAccess":true|false, "reason":"…"}
+//     upstreamAccess: false = шинэчлэлт авах эрхийг цуцлана (байгаа код хэвээр),
+//                     true  = сэргээнэ/түлхүүрийг шинэчилнэ (lib/upstream-access.ts)
 //   DELETE /api/customers/<slug>?confirm=<slug> → Railway app+DB, GitHub repo, бүртгэл устгана
 import { eq } from "drizzle-orm";
 
@@ -10,6 +13,7 @@ import { db } from "@/lib/db";
 import { CUSTOMER_STATUSES, customers, type CustomerStatus } from "@/lib/db/schema";
 import { applyStatusTransition, LifecycleError } from "@/lib/lifecycle";
 import { destroyCustomer, TeardownError } from "@/lib/teardown";
+import { grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "@/lib/upstream-access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +28,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
 export async function PATCH(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   if (!(await authorized(request))) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const { slug } = await params;
-  const body = (await request.json().catch(() => ({}))) as { status?: string; autoSync?: boolean; autoDeploy?: boolean };
+  const body = (await request.json().catch(() => ({}))) as {
+    status?: string;
+    autoSync?: boolean;
+    autoDeploy?: boolean;
+    upstreamAccess?: boolean;
+    reason?: string;
+  };
   const customer = await getCustomerBySlug(slug);
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
   const set: Partial<typeof customers.$inferInsert> = {};
@@ -32,9 +42,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
   if (typeof body.autoDeploy === "boolean") set.autoDeploy = body.autoDeploy;
   const status = body.status as CustomerStatus | undefined;
   if (status && !CUSTOMER_STATUSES.includes(status)) return Response.json({ ok: false, error: "status буруу" }, { status: 400 });
-  if (!status && Object.keys(set).length === 0) return Response.json({ ok: false, error: "status / autoSync / autoDeploy аль нэг нь заавал" }, { status: 400 });
+  if (!status && Object.keys(set).length === 0 && typeof body.upstreamAccess !== "boolean")
+    return Response.json({ ok: false, error: "status / autoSync / autoDeploy / upstreamAccess аль нэг нь заавал" }, { status: 400 });
   try {
     let note: string | null = null;
+    if (typeof body.upstreamAccess === "boolean") {
+      if (body.upstreamAccess) await grantUpstreamAccess(customer);
+      else await revokeUpstreamAccess(customer, body.reason);
+      note = body.upstreamAccess ? "Шинэчлэлт авах эрх олгогдлоо" : "Шинэчлэлт авах эрх цуцлагдлаа — байгаа код хэвээр";
+    }
     if (status && status !== customer.status) {
       note = await applyStatusTransition(customer, status);
       set.status = status;
@@ -42,8 +58,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
     await db.update(customers).set({ ...set, updatedAt: new Date() }).where(eq(customers.id, customer.id));
     if (set.status) await logEvent(customer.id, "status", `Төлөв: ${customer.status} → ${set.status}`);
     if (typeof body.autoSync === "boolean") await logEvent(customer.id, "sync", body.autoSync ? "Авто sync асаав" : "Авто sync унтраав");
-    return Response.json({ ok: true, ...set, note });
+    return Response.json({ ok: true, ...set, ...(typeof body.upstreamAccess === "boolean" ? { upstreamAccess: body.upstreamAccess } : {}), note });
   } catch (error) {
+    if (error instanceof UpstreamAccessError) return Response.json({ ok: false, error: error.message }, { status: 422 });
     if (error instanceof LifecycleError) return Response.json({ ok: false, error: error.message }, { status: 502 });
     return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

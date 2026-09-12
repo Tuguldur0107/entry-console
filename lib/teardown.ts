@@ -9,6 +9,7 @@ import { db } from "./db";
 import { customers, type Customer } from "./db/schema";
 import { deleteRepo, getCustomerRepo, GitHubError } from "./github";
 import { deleteCustomDomain, deleteService, railwayCanConnectRepo, railwayConfigured } from "./railway";
+import { revokeUpstreamAccess } from "./upstream-access";
 
 export class TeardownError extends Error {
   constructor(message: string, public readonly failed: string[]) {
@@ -44,6 +45,15 @@ export async function destroyCustomer(customer: Customer): Promise<void> {
   const failed: string[] = [];
   const done: string[] = [];
   let next: Partial<typeof customers.$inferInsert> = {};
+
+  // 0a. Core repo дээрх энэ харилцагчийн deploy key (repo устсан ч core дээр
+  //     үлдэж болзошгүй тул эхэлж цэвэрлэнэ)
+  try {
+    await revokeUpstreamAccess(customer, "харилцагч устгагдав");
+    done.push("шинэчлэлтийн эрх");
+  } catch {
+    /* устгалыг үүнээс болж зогсоохгүй */
+  }
 
   // 0. Custom domain (service устахад хамт устдаг ч ил устгана)
   if (customer.customDomainId) {

@@ -72,6 +72,9 @@ export function ensureSchema(): Promise<void> {
         `alter table "customers" add column if not exists "request_note" text`,
         `alter table "customers" add column if not exists "decided_at" timestamptz`,
         `alter table "customers" add column if not exists "decision_note" text`,
+        // Шинэчлэлт авах эрх — харилцагч тус бүрд (v2.4)
+        `alter table "customers" add column if not exists "upstream_access" boolean not null default false`,
+        `alter table "customers" add column if not exists "upstream_key_id" integer`,
         `create table if not exists "console_state" ("key" text primary key, "value" jsonb not null, "updated_at" timestamptz not null default now())`,
       ])
         await db.execute(sql.raw(ddl));

@@ -14,6 +14,7 @@ import {
   deployCustomerToRailway,
   destroyCustomerAction,
   enableMonitoring,
+  grantUpstream,
   runMonitorNow,
   setAutoSync,
   setCustomDomainAction,
@@ -21,6 +22,7 @@ import {
   provisionCustomer,
   redeployCustomer,
   rejectRequestAction,
+  revokeUpstream,
   setAutoDeploy,
   setCustomerStatus,
   syncAllCustomers,
@@ -364,14 +366,12 @@ export function InviteForm({ slug }: { slug: string }) {
   const [result, action, pending] = useActionState(bound, null);
   return (
     <form action={action} className="space-y-2">
-      <input name="username" className="input w-full" placeholder="github-username" aria-label="GitHub хэрэглэгчийн нэр" required />
-      <div className="flex items-center gap-2">
-        <select name="permission" className="select flex-1" aria-label="Эрх" defaultValue="push">
-          <option value="push">Write — код унших, бичих</option>
-          <option value="pull">Read — зөвхөн унших</option>
-          <option value="admin">Admin — бүрэн эрх</option>
+      <input name="username" className="input w-full" placeholder="github-username" required />
+      <div className="flex gap-2">
+        <select name="permission" className="select flex-1" defaultValue="push">
+          <option value="push">Write</option><option value="pull">Read</option><option value="admin">Admin</option>
         </select>
-        <button className="btn shrink-0" type="submit" disabled={pending}>{pending ? "…" : "Урих"}</button>
+        <button className="btn shrink-0" type="submit" disabled={pending}>Урих</button>
       </div>
       <Notice result={result} />
     </form>
@@ -490,6 +490,58 @@ export function DeleteRequestButton({ slug }: { slug: string }) {
         onClick={() => { if (!confirm("Хүсэлтийг бүрмөсөн устгах уу?")) return; start(async () => { const r = await destroyCustomerAction(slug, slug); setResult(r); if (r.ok) router.push("/customers?status=pending"); }); }}>
         {pending ? "…" : "Хүсэлт устгах"}
       </button>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+/**
+ * Шинэчлэлт авах эрх — захиалгын гарц. Цуцлахад харилцагчийн байгаа код,
+ * deploy огт хөндөгдөхгүй; зөвхөн шинэ хувилбарын PR ирэхээ болино
+ * (docs/licensing/README.md).
+ */
+export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo }: { slug: string; granted: boolean; keyOnCore: boolean; secretOnRepo: boolean }) {
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const run = (fn: () => Promise<ActionResult>) => start(async () => { const r = await fn(); setResult(r); if (r.ok) { setConfirming(false); setReason(""); router.refresh(); } });
+  const broken = granted && (!keyOnCore || !secretOnRepo);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {granted ? <span className="badge badge-success">эрхтэй</span> : <span className="badge badge-muted">цуцлагдсан</span>}
+        <span className="text-text-3">core дээр түлхүүр {keyOnCore ? "✓" : "—"} · repo дээр secret {secretOnRepo ? "✓" : "—"}</span>
+      </div>
+      {broken && (
+        <p className="notice notice-warning">
+          Эрхтэй гэж бүртгэгдсэн ч {!keyOnCore ? "core repo дээр deploy key олдсонгүй" : "харилцагчийн repo дээр secret олдсонгүй"}. «Түлхүүр шинэчлэх» дарж сэргээнэ.
+        </p>
+      )}
+      {!granted && (
+        <p className="text-sm text-text-2">Шинэ хувилбар энэ харилцагч руу очихгүй. Байгаа код, deploy нь хэвийн ажилласаар байна.</p>
+      )}
+      {confirming ? (
+        <div className="space-y-2">
+          <input className="input" placeholder="Шалтгаан (төлбөр хоцорсон…)" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-sm btn-danger" disabled={pending} onClick={() => run(() => revokeUpstream(slug, reason))}>{pending ? "…" : "Тийм, цуцла"}</button>
+            <button className="btn btn-sm btn-ghost" disabled={pending} onClick={() => { setConfirming(false); setReason(""); }}>Болих</button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {granted ? (
+            <>
+              <button className="btn btn-sm btn-danger" disabled={pending} onClick={() => setConfirming(true)}>Эрх цуцлах</button>
+              <button className="btn btn-sm" disabled={pending} onClick={() => { if (!confirm("Түлхүүрийг шинэчлэх үү? Хуучин түлхүүр ажиллахаа болино.")) return; run(() => grantUpstream(slug)); }}>{pending ? "…" : "Түлхүүр шинэчлэх"}</button>
+            </>
+          ) : (
+            <button className="btn btn-sm btn-primary" disabled={pending} onClick={() => run(() => grantUpstream(slug))}>{pending ? "…" : "Эрх сэргээх"}</button>
+          )}
+        </div>
+      )}
       <Notice result={result} />
     </div>
   );

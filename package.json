@@ -14,6 +14,7 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "libsodium-wrappers": "^0.8.4",
     "next": "^16.3.0",
     "postgres": "^3.4.9",
     "react": "19.2.4",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

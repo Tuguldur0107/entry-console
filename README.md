@@ -16,6 +16,7 @@ Entry Accounting-ийн **харилцагчдыг** удирдах самбар
 | Харилцагч нэмэх (бүртгэл + repo) | Core repo-ийн `provision-customer.yml`-ийг dispatch → repo үүсэх, core түүх push, Actions permission, `UPSTREAM_TOKEN`, хэрэглэгч урих |
 | Хувилбарын самбар | Харилцагч бүрийн `<app>/api/health` → version vs core-ийн сүүлийн release |
 | Sync | Харилцагчийн `upstream-sync.yml` dispatch (ref = tag) → PR |
+| Шинэчлэлт авах эрх (захиалгын гарц) | Харилцагч бүрд ТУСДАА: core repo дээр read-only deploy key + тэдний repo-д `UPSTREAM_SSH_KEY` secret (`lib/upstream-access.ts`). Repo бэлэн болоход автоматаар олгогдоно; «Эрх цуцлах» дарахад core дээрх ТЭР НЭГ түлхүүр устна — бусад харилцагч хөндөгдөхгүй, тухайн харилцагчийн байгаа код/deploy хэвээр, зөвхөн шинэ хувилбар ирэхээ болино. REST: `PATCH /api/customers/<slug> {"upstreamAccess":false,"reason":"…"}` |
 | Эрх | Collaborator урих (Read/Write/Admin), хүлээгдэж буй урилга |
 
 ## Ажиллуулах

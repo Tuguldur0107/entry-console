@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ApproveForm, AutoSyncToggle, BackupPanel, CopyButton, CustomerEditForm, DeleteRequestButton, DeployPanel, DestroyForm, DomainForm, InviteForm, NoteForm, RejectForm, StatusActions, SyncButton } from "@/components/forms";
+import { ApproveForm, AutoSyncToggle, UpstreamAccessPanel, BackupPanel, CopyButton, CustomerEditForm, DeleteRequestButton, DeployPanel, DestroyForm, DomainForm, InviteForm, NoteForm, RejectForm, StatusActions, SyncButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, HealthBadge, PLAN_LABELS, RunBadge, SOURCE_LABELS, Section, StatusBadge, fmtAgo, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
@@ -14,6 +14,7 @@ import { deployBlocker } from "@/lib/deploy";
 import { railwayConfigured, railwayProjectUrl } from "@/lib/railway";
 import { config } from "@/lib/config";
 import { teardownPlan } from "@/lib/teardown";
+import { upstreamAccessState } from "@/lib/upstream-access";
 import type { Customer } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
     "Console-ийн бүртгэл, түүх, тэмдэглэл",
   ];
   const railwayUrl = c.railwayProjectId ? railwayProjectUrl(c.railwayProjectId, c.railwayServiceId ?? undefined) : null;
+  const access = repo ? await upstreamAccessState(c).catch(() => null) : null;
 
   return (
     <div className="space-y-5">
@@ -143,7 +145,15 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
 
           <Section title="Core шинэчлэлт" sub={`Харилцагчийн repo дээр upstream-sync.yml ажиллаж PR нээнэ · core ${latest?.tagName ?? "—"}`}>
             <SyncButton slug={slug} defaultRef={latest?.tagName ?? null} />
-            <div className="mt-3">
+            <div className="mt-4 border-t border-border pt-4">
+              <div className="mb-2 text-xs font-medium text-text-3">Шинэчлэлт авах эрх (захиалгын гарц)</div>
+              {access ? (
+                <UpstreamAccessPanel slug={slug} granted={access.granted} keyOnCore={access.keyOnCore} secretOnRepo={access.secretOnRepo} />
+              ) : (
+                <p className="text-sm text-text-3">Repo бэлэн болсны дараа харагдана.</p>
+              )}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
               <AutoSyncToggle slug={slug} on={c.autoSync} />
               {c.syncNote && <p className="notice notice-warning mt-2">{c.syncNote}</p>}
             </div>

@@ -11,6 +11,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const { slug } = await params;
   const customer = await getCustomerBySlug(slug);
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
+  if (!customer.upstreamAccess)
+    return Response.json(
+      { ok: false, error: "Шинэчлэлт авах эрх цуцлагдсан — PATCH {\"upstreamAccess\":true} -ээр сэргээнэ" },
+      { status: 409 }
+    );
   const body = (await request.json().catch(() => ({}))) as { ref?: string };
   try {
     const target = body.ref?.trim() || (await getLatestRelease())?.tagName || "main";

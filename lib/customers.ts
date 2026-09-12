@@ -20,6 +20,7 @@ import {
   type WorkflowRun,
 } from "./github";
 import { deployNow, syncRepoConnections } from "./deploy";
+import { grantUpstreamAccess } from "./upstream-access";
 import { latestDeployment, railwayCanConnectRepo, railwayConfigured, type RailwayStatus } from "./railway";
 
 export interface CustomerSummary {
@@ -76,7 +77,9 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
         .where(eq(customers.id, row.id))
         .returning();
       await logEvent(row.id, "activated", `Repo үүслээ: ${repo.fullName}`);
-      updated.push(await maybeAutoDeploy(next));
+      // Repo бэлэн болсон ЭНЭ ЦОРЫН ГАНЦ агшинд шинэчлэлт авах эрхийг олгоно.
+      // Дараа нь дахин олгохгүй — админ цуцалсан бол цуцлагдсанаараа үлдэнэ.
+      updated.push(await maybeAutoDeploy(await maybeGrantUpstream(next)));
     } else if (repo?.pushedAt && row.autoDeploy && (!row.railwayServiceId ? !row.deployError : !row.railwayRepoConnected && railwayCanConnectRepo())) {
       // Идэвхтэй болсон ч deploy хийгдээгүй (Railway хожим тохируулагдсан), эсвэл service бэлэн
       // боловч repo холбогдоогүй байтал account token нэмэгдсэн → холбоно
@@ -102,6 +105,17 @@ async function reconcile(rows: Customer[], repos: CustomerRepo[]): Promise<Custo
     }
   }
   return updated;
+}
+
+/** Repo анх бэлэн болоход нэг л удаа эрх олгоно; алдааг залгина (түүхэнд үлдэнэ). */
+async function maybeGrantUpstream(row: Customer): Promise<Customer> {
+  if (row.upstreamAccess || row.upstreamKeyId) return row;
+  try {
+    return await grantUpstreamAccess(row);
+  } catch (error) {
+    await logEvent(row.id, "access", `Эрх олгож чадсангүй: ${error instanceof Error ? error.message : String(error)}`);
+    return row;
+  }
 }
 
 /** autoDeploy + Railway тохируулсан + deploy хийгдээгүй бол deploy; алдааг залгина (deployError-д). */
@@ -252,6 +266,8 @@ export function computeAttention(
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Сүүлийн backup ${Math.round((Date.now() - c.lastBackupAt.getTime()) / 3600000)} цагийн өмнө — Railway backup-ыг шалга` });
     if (c.customDomain && !c.customDomainVerified)
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `${c.customDomain} DNS хүлээж байна — CNAME → ${c.dnsTarget ?? "?"}` });
+    if (c.status === "active" && !c.upstreamAccess)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: "Шинэчлэлт авах эрх цуцлагдсан — шинэ хувилбар очихгүй (захиалга)" });
     if (c.syncNote)
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Авто sync саатсан: ${c.syncNote}` });
     if (c.railwayServiceId && !c.railwayRepoConnected)
