@@ -4,7 +4,8 @@
 //   PUT  /api/customers/<slug>/sync          → sync workflow-г core-ийнхтэй тэнцүүлэх
 import { authorized } from "../../auth";
 import { getCustomerBySlug, logEvent } from "@/lib/customers";
-import { dispatchWorkflow, getDefaultBranch, getJobLogTail, getLatestRelease, GitHubError, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
+import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
+import { config } from "@/lib/config";
 import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
 
 export const dynamic = "force-dynamic";
@@ -19,11 +20,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const customer = await getCustomerBySlug(slug);
   if (!customer) return Response.json({ ok: false, error: "not found" }, { status: 404 });
   try {
-    const [runs, sshKey, pushKey, legacyToken] = await Promise.all([
+    const [runs, sshKey, pushKey, legacyToken, repoPerms, orgPerms] = await Promise.all([
       listWorkflowRuns(customer.githubRepo, "upstream-sync.yml", 3),
       hasRepoSecret(customer.githubRepo, SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, PUSH_SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, "UPSTREAM_TOKEN").catch(() => false),
+      getActionsPermissions(customer.githubRepo).catch((e) => ({ error: String(e) })),
+      getOrgActionsPermissions(config.owner).catch((e) => ({ error: String(e) })),
     ]);
     const wantLog = new URL(request.url).searchParams.get("log") === "1";
     const detailed = await Promise.all(
@@ -49,6 +52,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       ok: true,
       upstreamAccess: customer.upstreamAccess,
       secrets: { [SECRET_NAME]: sshKey, [PUSH_SECRET_NAME]: pushKey, UPSTREAM_TOKEN: legacyToken },
+      actionsPermissions: { repo: repoPerms, org: orgPerms },
       runs: detailed,
     });
   } catch (error) {

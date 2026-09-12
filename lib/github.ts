@@ -351,6 +351,16 @@ export async function getActionsPermissions(fullName: string): Promise<ActionsPe
  * Үүнгүйгээр upstream-sync нь PR нээх гэхэд «Resource not accessible by
  * integration (createPullRequest)» гэж унана.
  */
+export async function getOrgActionsPermissions(owner: string): Promise<ActionsPermissions> {
+  const p = await gh<{ default_workflow_permissions: string; can_approve_pull_request_reviews: boolean }>(
+    `/orgs/${owner}/actions/permissions/workflow`
+  );
+  return {
+    defaultWorkflowPermissions: p.default_workflow_permissions,
+    canApprovePullRequestReviews: p.can_approve_pull_request_reviews,
+  };
+}
+
 export async function ensureActionsPermissions(fullName: string, owner: string): Promise<string> {
   const body = JSON.stringify({ default_workflow_permissions: "write", can_approve_pull_request_reviews: true });
   const done: string[] = [];
