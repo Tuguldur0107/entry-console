@@ -302,6 +302,22 @@ export async function listWorkflowRuns(
   }
 }
 
+/** Ажлын логийн сүүл — алдааны яг мөрийг харах (зөвхөн оношлогоонд). */
+export async function getJobLogTail(fullName: string, jobId: number, lines = 25): Promise<string> {
+  const response = await fetch(`${API}/repos/${fullName}/actions/jobs/${jobId}/logs`, {
+    headers: {
+      Authorization: `Bearer ${config.githubToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    redirect: "follow",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new GitHubError(response.status, `Лог уншиж чадсангүй: ${response.status}`);
+  const text = await response.text();
+  return text.split("\n").filter((l) => l.trim()).slice(-lines).join("\n");
+}
+
 export interface RunStep {
   name: string;
   status: string;
@@ -309,6 +325,7 @@ export interface RunStep {
 }
 
 export interface RunJob {
+  id: number;
   name: string;
   conclusion: string | null;
   htmlUrl: string;
@@ -318,9 +335,10 @@ export interface RunJob {
 /** Ажиллагааны алхмууд — sync яагаад унасныг лог татахгүйгээр олоход. */
 export async function listRunJobs(fullName: string, runId: number): Promise<RunJob[]> {
   const r = await gh<{
-    jobs: { name: string; conclusion: string | null; html_url: string; steps?: { name: string; status: string; conclusion: string | null }[] }[];
+    jobs: { id: number; name: string; conclusion: string | null; html_url: string; steps?: { name: string; status: string; conclusion: string | null }[] }[];
   }>(`/repos/${fullName}/actions/runs/${runId}/jobs`);
   return r.jobs.map((j) => ({
+    id: j.id,
     name: j.name,
     conclusion: j.conclusion,
     htmlUrl: j.html_url,

@@ -2,7 +2,7 @@
 //   POST /api/customers/<slug>/sync  {"ref":"v1.2.0"}  (ref өгөхгүй бол core-ийн сүүлийн release)
 import { authorized } from "../../auth";
 import { getCustomerBySlug, logEvent } from "@/lib/customers";
-import { dispatchWorkflow, getDefaultBranch, getLatestRelease, GitHubError, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
+import { dispatchWorkflow, getDefaultBranch, getJobLogTail, getLatestRelease, GitHubError, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
 import { SECRET_NAME } from "@/lib/upstream-access";
 
 export const dynamic = "force-dynamic";
@@ -22,19 +22,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       hasRepoSecret(customer.githubRepo, SECRET_NAME).catch(() => false),
       hasRepoSecret(customer.githubRepo, "UPSTREAM_TOKEN").catch(() => false),
     ]);
+    const wantLog = new URL(request.url).searchParams.get("log") === "1";
     const detailed = await Promise.all(
-      runs.map(async (run) => ({
-        id: run.id,
-        status: run.status,
-        conclusion: run.conclusion,
-        createdAt: run.createdAt,
-        htmlUrl: run.htmlUrl,
-        failedSteps:
-          run.conclusion === "success"
-            ? []
-            : (await listRunJobs(customer.githubRepo, run.id).catch(() => []))
-                .flatMap((j) => j.steps.filter((st) => st.conclusion === "failure").map((st) => `${j.name} → ${st.name}`)),
-      }))
+      runs.map(async (run) => {
+        if (run.conclusion === "success")
+          return { id: run.id, status: run.status, conclusion: run.conclusion, createdAt: run.createdAt, htmlUrl: run.htmlUrl, failedSteps: [] as string[] };
+        const jobs = await listRunJobs(customer.githubRepo, run.id).catch(() => []);
+        const failed = jobs.filter((j) => j.conclusion === "failure");
+        return {
+          id: run.id,
+          status: run.status,
+          conclusion: run.conclusion,
+          createdAt: run.createdAt,
+          htmlUrl: run.htmlUrl,
+          failedSteps: failed.flatMap((j) => j.steps.filter((st) => st.conclusion === "failure").map((st) => `${j.name} → ${st.name}`)),
+          ...(wantLog && failed[0]
+            ? { log: await getJobLogTail(customer.githubRepo, failed[0].id).catch((e) => `лог алга: ${e instanceof Error ? e.message : e}`) }
+            : {}),
+        };
+      })
     );
     return Response.json({
       ok: true,
