@@ -557,6 +557,12 @@ export async function addLabel(fullName: string, number: number, label: string, 
   await gh<void>(`/repos/${fullName}/issues/${number}/labels`, { method: "POST", body: JSON.stringify({ labels: [label] }) });
 }
 
+export async function removeLabel(fullName: string, number: number, label: string): Promise<void> {
+  await gh<void>(`/repos/${fullName}/issues/${number}/labels/${encodeURIComponent(label)}`, { method: "DELETE" }).catch((error) => {
+    if (!(error instanceof GitHubError && error.status === 404)) throw error;
+  });
+}
+
 export async function mergePull(fullName: string, number: number, title: string): Promise<void> {
   await gh<void>(`/repos/${fullName}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", commit_title: title }) });
 }

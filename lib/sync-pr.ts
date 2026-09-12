@@ -11,7 +11,7 @@
 import { config } from "./config";
 import { logEvent } from "./customers";
 import type { Customer } from "./db/schema";
-import { addLabel, createPull, listBranches, listOpenSyncPulls, listRunJobs, listWorkflowRuns } from "./github";
+import { addLabel, createPull, listBranches, listOpenSyncPulls, listRunJobs, listWorkflowRuns, removeLabel } from "./github";
 
 export type SyncResult = "passed" | "failed" | "conflict" | "unknown";
 
@@ -41,6 +41,19 @@ export async function latestSyncResult(fullName: string): Promise<{ result: Sync
   return { result: "unknown", runUrl: run.htmlUrl };
 }
 
+const ALL_LABELS = Object.values(LABELS).map((l) => l.name);
+
+/** PR дээр үр дүнгийн label-ыг тавина; бусад sync label-ыг авна. Идемпотент. */
+async function applyLabel(fullName: string, number: number, result: SyncResult, current: string[]): Promise<boolean> {
+  if (result === "unknown") return false;
+  const want = LABELS[result];
+  if (current.includes(want.name) && current.filter((l) => ALL_LABELS.includes(l)).length === 1) return false;
+  for (const stale of current.filter((l) => ALL_LABELS.includes(l) && l !== want.name))
+    await removeLabel(fullName, number, stale).catch(() => undefined);
+  await addLabel(fullName, number, want.name, want.color, want.description);
+  return true;
+}
+
 export interface OpenedPull {
   number: number;
   htmlUrl: string;
@@ -59,6 +72,14 @@ export async function openSyncPulls(customer: Customer, defaultBranch: string): 
   ]);
   const withPr = new Set(openPulls.map((p) => p.headRef));
   const opened: OpenedPull[] = [];
+
+  // Аль хэдийн нээлттэй PR-уудын label-ыг мөн засна: workflow нь label тавьж
+  // чаддаггүй болсон тул шошгогүй PR үлдэж, авто merge ажиллахгүй байдаг.
+  for (const p of openPulls) {
+    const { result } = await latestSyncResult(customer.githubRepo);
+    if (await applyLabel(customer.githubRepo, p.number, result, p.labels))
+      await logEvent(customer.id, "sync", `PR #${p.number} label: ${result}`);
+  }
   for (const branch of branches) {
     if (withPr.has(branch.name)) continue;
     const { result, runUrl } = await latestSyncResult(customer.githubRepo);
@@ -91,6 +112,7 @@ export async function openSyncPulls(customer: Customer, defaultBranch: string): 
       ].join("\n"),
     });
     if (label) await addLabel(customer.githubRepo, pr.number, label.name, label.color, label.description).catch(() => undefined);
+    void label;
     await logEvent(customer.id, "sync", `PR #${pr.number} нээгдэв (${ref}) — шалгалт: ${result}`);
     opened.push({ ...pr, branch: branch.name, result });
   }
