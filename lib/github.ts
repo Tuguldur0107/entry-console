@@ -31,7 +31,12 @@ async function gh<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let message = text;
     try {
-      message = (JSON.parse(text) as { message?: string }).message ?? text;
+      const body = JSON.parse(text) as { message?: string; errors?: { message?: string; field?: string; code?: string }[] };
+      message = body.message ?? text;
+      // GitHub-ийн "Validation Failed" нь дэлгэрэнгүйг errors[]-д өгдөг —
+      // үүнгүйгээр шалтгаан огт мэдэгдэхгүй.
+      const detail = (body.errors ?? []).map((e) => e.message ?? [e.field, e.code].filter(Boolean).join(" ")).filter(Boolean);
+      if (detail.length) message = `${message}: ${detail.join("; ")}`;
     } catch {
       /* raw text */
     }
