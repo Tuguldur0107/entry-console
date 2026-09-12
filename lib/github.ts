@@ -421,6 +421,25 @@ export async function putFile(
 }
 
 /** Ажлын логийн сүүл — алдааны яг мөрийг харах (зөвхөн оношлогоонд). */
+export async function getJobLogHead(fullName: string, jobId: number, lines = 60): Promise<string> {
+  const raw = await getJobLogRaw(fullName, jobId);
+  return raw.split("\n").filter((l) => l.trim()).slice(0, lines).join("\n");
+}
+
+async function getJobLogRaw(fullName: string, jobId: number): Promise<string> {
+  const response = await fetch(`${API}/repos/${fullName}/actions/jobs/${jobId}/logs`, {
+    headers: {
+      Authorization: `Bearer ${config.githubToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    redirect: "follow",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new GitHubError(response.status, `Лог уншиж чадсангүй: ${response.status}`);
+  return response.text();
+}
+
 export async function getJobLogTail(fullName: string, jobId: number, lines = 25): Promise<string> {
   const response = await fetch(`${API}/repos/${fullName}/actions/jobs/${jobId}/logs`, {
     headers: {

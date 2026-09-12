@@ -4,7 +4,7 @@
 //   PUT  /api/customers/<slug>/sync          → sync workflow-г core-ийнхтэй тэнцүүлэх
 import { authorized } from "../../auth";
 import { getCustomerBySlug, logEvent } from "@/lib/customers";
-import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
+import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogHead, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
 import { config } from "@/lib/config";
 import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
 
@@ -44,6 +44,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
           failedSteps: failed.flatMap((j) => j.steps.filter((st) => st.conclusion === "failure").map((st) => `${j.name} → ${st.name}`)),
           ...(wantLog && failed[0]
             ? { log: await getJobLogTail(customer.githubRepo, failed[0].id).catch((e) => `лог алга: ${e instanceof Error ? e.message : e}`) }
+            : {}),
+          ...(new URL(request.url).searchParams.get("setup") === "1" && failed[0]
+            ? { setup: await getJobLogHead(customer.githubRepo, failed[0].id).catch((e) => `${e}`) }
             : {}),
         };
       })
