@@ -351,19 +351,32 @@ export async function getActionsPermissions(fullName: string): Promise<ActionsPe
  * Үүнгүйгээр upstream-sync нь PR нээх гэхэд «Resource not accessible by
  * integration (createPullRequest)» гэж унана.
  */
-export async function ensureActionsPermissions(fullName: string, owner: string): Promise<"already" | "repo" | "org+repo"> {
-  const current = await getActionsPermissions(fullName).catch(() => null);
-  if (current?.defaultWorkflowPermissions === "write" && current.canApprovePullRequestReviews) return "already";
+export async function ensureActionsPermissions(fullName: string, owner: string): Promise<string> {
   const body = JSON.stringify({ default_workflow_permissions: "write", can_approve_pull_request_reviews: true });
+  const done: string[] = [];
+
+  // ORG түвшин эхэлж: org-ийн бодлого нь repo-ийн тохиргоог ДАРНА. Repo дээр
+  // «PR үүсгэж болно» гэж харагдаж байсан ч org хориглосон бол Actions
+  // «Resource not accessible by integration (createPullRequest)» гэж унана.
   try {
-    await gh<void>(`/repos/${fullName}/actions/permissions/workflow`, { method: "PUT", body });
-    return "repo";
+    const org = await gh<{ default_workflow_permissions: string; can_approve_pull_request_reviews: boolean }>(
+      `/orgs/${owner}/actions/permissions/workflow`
+    );
+    if (org.default_workflow_permissions !== "write" || !org.can_approve_pull_request_reviews) {
+      await gh<void>(`/orgs/${owner}/actions/permissions/workflow`, { method: "PUT", body });
+      done.push("org");
+    }
   } catch (error) {
-    if (!(error instanceof GitHubError) || !/disabled by the organization|not accessible|403/i.test(`${error.status} ${error.message}`)) throw error;
-    await gh<void>(`/orgs/${owner}/actions/permissions/workflow`, { method: "PUT", body });
-    await gh<void>(`/repos/${fullName}/actions/permissions/workflow`, { method: "PUT", body });
-    return "org+repo";
+    // Хувь хүний бүртгэл дээр org байхгүй (404) — энэ нь алдаа биш
+    if (!(error instanceof GitHubError && (error.status === 404 || error.status === 403))) throw error;
   }
+
+  const repo = await getActionsPermissions(fullName).catch(() => null);
+  if (repo?.defaultWorkflowPermissions !== "write" || !repo.canApprovePullRequestReviews) {
+    await gh<void>(`/repos/${fullName}/actions/permissions/workflow`, { method: "PUT", body });
+    done.push("repo");
+  }
+  return done.length ? done.join("+") : "already";
 }
 
 /** Хавтасны файлуудыг жагсаана (хавтас байхгүй бол хоосон). */
