@@ -32,6 +32,56 @@ const originOf = (url: string | null): string | null => {
   }
 };
 
+/** Бүртгэлтэй харилцагчийн танигдах домэйнууд (appUrl + custom domain). */
+export type KnownDomain = { appUrl: string | null; customDomain: string | null };
+
+/**
+ * ЦЭВЭР ангилал (DB-гүй, тесттэй). Beacon-ийг verdict + alert эсэхээр
+ * шийднэ. Гол зарчим: сэрэмжлүүлэг ЗӨВХӨН production + локал биш + бүртгэлгүй
+ * домэйн үед — легит домэйн солилт, локал хөгжүүлэлт худал дохио өгөхгүй.
+ */
+export function classifyBeacon(input: {
+  appUrl: string | null;
+  licensedUrl: string | null;
+  hasValidLicense: boolean;
+  candidateSlug: string | null;
+  matched: boolean;
+  nodeEnv: string | null;
+  knownDomains: KnownDomain[];
+}): { verdict: BeaconVerdict; shouldAlert: boolean } {
+  const { appUrl, licensedUrl, hasValidLicense, candidateSlug, matched, nodeEnv } = input;
+
+  const isRegisteredDomain =
+    !!appUrl &&
+    input.knownDomains.some(
+      (d) => originOf(d.appUrl) === appUrl || originOf(d.customDomain) === appUrl
+    );
+  let host = "";
+  try {
+    host = appUrl ? new URL(appUrl).hostname : "";
+  } catch {
+    host = "";
+  }
+  const isLocal = !appUrl || host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const isDev = nodeEnv !== "production";
+
+  let verdict: BeaconVerdict;
+  if (hasValidLicense && licensedUrl && appUrl && licensedUrl === appUrl) {
+    verdict = "healthy"; // лиценз хүчинтэй, домэйндоо
+  } else if (isRegisteredDomain) {
+    verdict = "healthy"; // харилцагчийн ӨӨРИЙН домэйн (лиценз хуучирсан ч)
+  } else if (hasValidLicense) {
+    verdict = "mismatch"; // хүчинтэй лиценз, бүртгэлгүй өөр домэйн
+  } else if (candidateSlug || matched) {
+    verdict = "leaked"; // лицензгүй ч аль харилцагчийнх нь тодорхой
+  } else {
+    verdict = "unknown";
+  }
+
+  const shouldAlert = verdict !== "healthy" && !isLocal && !isDev;
+  return { verdict, shouldAlert };
+}
+
 export type BeaconResult = {
   verdict: BeaconVerdict;
   slug: string | null;
@@ -71,45 +121,15 @@ export async function ingestBeacon(input: BeaconInput, ip: string | null): Promi
     : undefined;
   const matched = bySlug ?? byUrl ?? null;
 
-  // Легит домэйн эсэх: бүртгэлтэй харилцагчийн appUrl эсвэл custom domain-тай
-  // таарвал энэ бол ТЭР харилцагчийн бодит deployment (лиценз хуучирсан байж
-  // болзошгүй — Console дараагийн deploy-д шинэчилнэ). Хулгай биш.
-  const isRegisteredDomain =
-    !!appUrl &&
-    rows.some(
-      (c) => originOf(c.appUrl) === appUrl || originOf(c.customDomain) === appUrl
-    );
-
-  // Локал/хөгжүүлэлт: localhost эсвэл nodeEnv=development. Легит харилцагч
-  // ӨӨРИЙН кодоо (тэмдэгтэй repo) local ажиллуулж болно — ХУЛГАЙ гэж үзэхгүй.
-  const host = (() => {
-    try {
-      return appUrl ? new URL(appUrl).hostname : "";
-    } catch {
-      return "";
-    }
-  })();
-  const isLocal =
-    !appUrl || host === "localhost" || host === "127.0.0.1" || host === "::1";
-  const isDev = nodeEnv !== "production";
-
-  let verdict: BeaconVerdict;
-  if (license && licensedUrl && appUrl && licensedUrl === appUrl) {
-    // Лиценз хүчинтэй, домэйндоо — хэвийн.
-    verdict = "healthy";
-  } else if (isRegisteredDomain) {
-    // Бүртгэлтэй харилцагчийн ӨӨРИЙН домэйн — лиценз хуучирсан ч хулгай биш
-    // (домэйн солилт Console-оор дараа шинэчлэгдэнэ). False alarm-аас сэргийлнэ.
-    verdict = "healthy";
-  } else if (license) {
-    // Хүчинтэй лиценз ч БҮРТГЭЛГҮЙ өөр домэйнд — env хуулсан.
-    verdict = "mismatch";
-  } else if (candidateSlug || matched) {
-    // Лицензгүй ч аль харилцагчийнх нь тодорхой — код алдагдсан.
-    verdict = "leaked";
-  } else {
-    verdict = "unknown";
-  }
+  const { verdict, shouldAlert } = classifyBeacon({
+    appUrl,
+    licensedUrl,
+    hasValidLicense: !!license,
+    candidateSlug,
+    matched: !!matched,
+    nodeEnv,
+    knownDomains: rows.map((c) => ({ appUrl: c.appUrl, customDomain: c.customDomain })),
+  });
 
   // Upsert: (instanceId, appUrl) хосоор нэг мөр.
   const existing = await db
@@ -162,12 +182,12 @@ export async function ingestBeacon(input: BeaconInput, ip: string | null): Promi
       .returning();
   }
 
-  // Сэрэмжлүүлэг — ЗӨВХӨН production, локал биш, healthy биш, өмнө нь
-  // сэрэмжлээгүй үед. Локал/dev дохио бүртгэгдэнэ ч сэрэмжлүүлэхгүй: легит
-  // харилцагч кодоо local ажиллуулах нь хэвийн, "ком сольсон" гэх мэт нь
-  // худал дохио өгөхгүй (энэ бол мэдэгдэл — устгал/хориг БИШ тул хор ч үгүй).
+  // Сэрэмжлүүлэг — classifyBeacon shouldAlert (production + локал биш) +
+  // өмнө нь сэрэмжлээгүй үед. Локал/dev дохио бүртгэгдэнэ ч сэрэмжлүүлэхгүй:
+  // легит харилцагч кодоо local ажиллуулах, "ком сольсон" нь худал дохио
+  // өгөхгүй (энэ бол мэдэгдэл — устгал/хориг БИШ тул хор ч үгүй).
   let alerted = false;
-  if (verdict !== "healthy" && !isLocal && !isDev && !row.alertedAt) {
+  if (shouldAlert && !row.alertedAt) {
     const who = matched
       ? `${matched.displayName} (${matched.slug})`
       : candidateSlug
