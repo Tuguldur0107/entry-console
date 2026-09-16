@@ -121,6 +121,48 @@ export const consoleState = pgTable("console_state", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Deployment beacon — instance бүрийн "би энд ажиллаж байна" дохио
+ * (core: lib/licensing/beacon.ts). Verdict нь Console-ийн ангилал:
+ *   healthy   — лиценз хүчинтэй, appUrl таарсан, бүртгэлтэй харилцагч
+ *   mismatch  — лиценз хүчинтэй ч appUrl зөрсөн (env хуулж өөр домэйнд)
+ *   leaked    — лицензгүй ч origin тэмдэгтэй (аль харилцагчийн код тодорхой)
+ *   unknown   — лиценз ч, тэмдэг ч алга (танихгүй хуулбар)
+ * appUrl+instanceId-аар upsert — нэг instance нэг мөр, lastSeenAt шинэчлэгдэнэ.
+ */
+export const BEACON_VERDICTS = ["healthy", "mismatch", "leaked", "unknown"] as const;
+export type BeaconVerdict = (typeof BEACON_VERDICTS)[number];
+
+export const beacons = pgTable("beacons", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Процессын ID (core INSTANCE_ID) — appUrl-тай хосоор instance-ийг ялгана */
+  instanceId: text("instance_id").notNull(),
+  /** Дохио илгээсэн бодит домэйн (runtime origin) */
+  appUrl: text("app_url"),
+  verdict: text("verdict").$type<BeaconVerdict>().notNull(),
+  /** Лицензээс баталгаажсан slug (verify амжилттай бол) */
+  licenseSlug: text("license_slug"),
+  /** Лицензийн token доторх appUrl (зөрүү шалгахад) */
+  licensedUrl: text("licensed_url"),
+  /** .entry-origin тэмдгийн slug (git clone-оор дагасан) */
+  originSlug: text("origin_slug"),
+  originRepo: text("origin_repo"),
+  /** Хамгийн ойр таарсан харилцагч (verdict-ийн үндэслэл) */
+  matchedCustomerId: uuid("matched_customer_id").references(() => customers.id, {
+    onDelete: "set null",
+  }),
+  version: text("version"),
+  sha: text("sha"),
+  nodeEnv: text("node_env"),
+  /** Дохио ирсэн IP (proxy header-ээс) */
+  ip: text("ip"),
+  /** Сэрэмжлүүлэг илгээгдсэн эсэх (нэг instance-д нэг л удаа) */
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  hitCount: integer("hit_count").notNull().default(1),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   events: many(customerEvents),
 }));
@@ -131,3 +173,4 @@ export const customerEventsRelations = relations(customerEvents, ({ one }) => ({
 
 export type Customer = typeof customers.$inferSelect;
 export type CustomerEvent = typeof customerEvents.$inferSelect;
+export type Beacon = typeof beacons.$inferSelect;

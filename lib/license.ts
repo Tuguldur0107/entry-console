@@ -10,7 +10,43 @@
 // дээр "бүртгэлгүй" гэж хаана) — ингэснээр түлхүүр тавихаас өмнөх console
 // хэвийн ажиллана.
 
-import { createPrivateKey, sign } from "node:crypto";
+import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
+
+/** Core-той ИЖИЛ public key — beacon дахь ENTRY_LICENSE-ийг баталгаажуулна. */
+const ENTRY_LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAZCL8o1/RkhL5f+DAO3xDunXXWi4GuWMLzVv397g7Ovw=
+-----END PUBLIC KEY-----`;
+
+export type VerifiedLicense = {
+  slug: string;
+  appUrl: string;
+  plan?: string;
+  iat: number;
+  exp: number;
+};
+
+/**
+ * Beacon-оос ирсэн ENTRY_LICENSE token-ийг баталгаажуулна (offline). Хүчинтэй
+ * бол payload, эс бөгөөс null. Console нь энэ slug/appUrl-ийг итгэж болно —
+ * зөвхөн нууц түлхүүрээр зурсан token л энд дамжина.
+ */
+export function verifyLicenseToken(token: string | null | undefined): VerifiedLicense | null {
+  const trimmed = token?.trim();
+  if (!trimmed?.startsWith("entl_")) return null;
+  const parts = trimmed.slice(5).split(".");
+  if (parts.length !== 2) return null;
+  try {
+    const payloadRaw = Buffer.from(parts[0], "base64url");
+    const signature = Buffer.from(parts[1], "base64url");
+    const ok = verify(null, payloadRaw, createPublicKey(ENTRY_LICENSE_PUBLIC_KEY), signature);
+    if (!ok) return null;
+    const payload = JSON.parse(payloadRaw.toString("utf8")) as VerifiedLicense;
+    if (typeof payload?.slug !== "string" || typeof payload?.appUrl !== "string") return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 /** Түлхүүр тохируулагдсан үед л ENTRY_LICENSE автоматаар олгогдоно. */
 export function licenseConfigured(): boolean {

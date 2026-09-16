@@ -76,6 +76,7 @@ function MobileNav() {
     <div className="flex gap-1 text-xs">
       <Link href="/" className="btn btn-ghost btn-sm">Самбар</Link>
       <Link href="/customers" className="btn btn-ghost btn-sm">Харилцагчид</Link>
+      <Link href="/beacons" className="btn btn-ghost btn-sm">Илрүүлэлт</Link>
       <Link href="/settings" className="btn btn-ghost btn-sm">Тохиргоо</Link>
     </div>
   );
