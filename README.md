@@ -37,7 +37,15 @@ Service `entry-console` (GitHub repo) + Postgres `Entry console DB`. Variables: 
 **Харилцагчийн автомат deploy:** `RAILWAY_TOKEN` (account token) + `RAILWAY_PROJECT_ID` (+ `RAILWAY_ENVIRONMENT_ID`)
 өгвөл харилцагч бүрд тэр project дотор `entry-<код>` (GitHub repo, healthcheck `/api/health`,
 preDeploy `db:push`) + `entry-<код>-db` (postgres:16 + volume) service үүсч, `DATABASE_URL`,
-`AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` тавигдаж, domain нь харилцагчийн Deploy хаяг болно
+`AUTH_SECRET`, `NEXT_PUBLIC_APP_URL` тавигдаж, domain нь харилцагчийн Deploy хаяг болно.
+
+**Deployment-ийн лиценз (ENTRY_LICENSE):** console-ийн орчинд
+`ENTRY_LICENSE_SIGNING_KEY` (Ed25519 private key, PEM) тавигдсан үед deploy
+бүрд харилцагчийн domain-даа уягдсан гарын үсэгтэй `ENTRY_LICENSE` token
+автоматаар олгогдоно (`lib/license.ts`; хугацаа `ENTRY_LICENSE_DAYS`, default
+365 — дахин Deploy хийхэд сунгагдана). Core тал үүнийг offline баталгаажуулж
+(lib/licensing/license.ts), token-гүй хуулбар production-д нэвтрэхгүй.
+Түлхүүр аль ч repo-д ОРОХГҮЙ — зөвхөн console-ийн Railway variable
 (`lib/railway.ts`, `lib/deploy.ts`). Нэрээр байгаа service-ийг дахин ашигладаг тул унасан
 оролдлогыг аюулгүй давтана. Railway-ийн GitHub app `GITHUB_OWNER` org-д суусан байх ёстой.
 Зөвхөн `RAILWAY_PROJECT_TOKEN` өгвөл service/DB/domain үүснэ, харин repo холболтыг Railway дээр

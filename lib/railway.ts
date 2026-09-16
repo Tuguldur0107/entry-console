@@ -4,6 +4,8 @@
 //   Railway → Account settings → Tokens), RAILWAY_WORKSPACE_ID (сонголтоор).
 import { randomBytes } from "node:crypto";
 
+import { issueEntryLicense, licenseConfigured } from "./license";
+
 const API = "https://backboard.railway.com/graphql/v2";
 
 export class RailwayError extends Error {}
@@ -285,6 +287,11 @@ export async function deployCustomer(input: {
           AUTH_TRUST_HOST: "true",
           // AUTH_SECRET-ийг дахин deploy-д солихгүй (session-ууд хүчингүй болно)
           ...(appExisting ? {} : { AUTH_SECRET: randomBytes(32).toString("base64") }),
+          // Deployment-ийн лиценз — domain-даа уягдсан гарын үсэгтэй token.
+          // Deploy бүрд дахин олгогдоно = хугацаа сунгалт нь Deploy товч.
+          ...(licenseConfigured()
+            ? { ENTRY_LICENSE: issueEntryLicense(input.slug, `https://${domain}`) }
+            : {}),
         },
       },
     }
