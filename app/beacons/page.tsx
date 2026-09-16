@@ -25,7 +25,9 @@ export default async function BeaconsPage() {
     .orderBy(desc(beacons.lastSeenAt))
     .limit(200);
 
-  const suspicious = rows.filter((r) => r.b.verdict !== "healthy");
+  // Сэжигтэй = сэрэмжлүүлсэн (production, локал биш) instance. Локал/dev
+  // дохио доорх "бүх дохио"-нд л харагдана — худал дохио үүсгэхгүй.
+  const suspicious = rows.filter((r) => r.b.verdict !== "healthy" && r.b.alertedAt);
   const counts = {
     healthy: rows.filter((r) => r.b.verdict === "healthy").length,
     mismatch: rows.filter((r) => r.b.verdict === "mismatch").length,

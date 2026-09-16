@@ -71,13 +71,38 @@ export async function ingestBeacon(input: BeaconInput, ip: string | null): Promi
     : undefined;
   const matched = bySlug ?? byUrl ?? null;
 
+  // Легит домэйн эсэх: бүртгэлтэй харилцагчийн appUrl эсвэл custom domain-тай
+  // таарвал энэ бол ТЭР харилцагчийн бодит deployment (лиценз хуучирсан байж
+  // болзошгүй — Console дараагийн deploy-д шинэчилнэ). Хулгай биш.
+  const isRegisteredDomain =
+    !!appUrl &&
+    rows.some(
+      (c) => originOf(c.appUrl) === appUrl || originOf(c.customDomain) === appUrl
+    );
+
+  // Локал/хөгжүүлэлт: localhost эсвэл nodeEnv=development. Легит харилцагч
+  // ӨӨРИЙН кодоо (тэмдэгтэй repo) local ажиллуулж болно — ХУЛГАЙ гэж үзэхгүй.
+  const host = (() => {
+    try {
+      return appUrl ? new URL(appUrl).hostname : "";
+    } catch {
+      return "";
+    }
+  })();
+  const isLocal =
+    !appUrl || host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const isDev = nodeEnv !== "production";
+
   let verdict: BeaconVerdict;
   if (license && licensedUrl && appUrl && licensedUrl === appUrl) {
-    // Лиценз хүчинтэй, домэйндоо ажиллаж байна — хэвийн (бүртгэлд байхгүй ч
-    // token хүчинтэй тул итгэнэ; healthy).
+    // Лиценз хүчинтэй, домэйндоо — хэвийн.
+    verdict = "healthy";
+  } else if (isRegisteredDomain) {
+    // Бүртгэлтэй харилцагчийн ӨӨРИЙН домэйн — лиценз хуучирсан ч хулгай биш
+    // (домэйн солилт Console-оор дараа шинэчлэгдэнэ). False alarm-аас сэргийлнэ.
     verdict = "healthy";
   } else if (license) {
-    // Хүчинтэй лиценз ч өөр домэйнд — env хуулсан хулгайлалт.
+    // Хүчинтэй лиценз ч БҮРТГЭЛГҮЙ өөр домэйнд — env хуулсан.
     verdict = "mismatch";
   } else if (candidateSlug || matched) {
     // Лицензгүй ч аль харилцагчийнх нь тодорхой — код алдагдсан.
@@ -137,9 +162,12 @@ export async function ingestBeacon(input: BeaconInput, ip: string | null): Promi
       .returning();
   }
 
-  // Сэрэмжлүүлэг — healthy биш + өмнө нь энэ instance-д сэрэмжлээгүй.
+  // Сэрэмжлүүлэг — ЗӨВХӨН production, локал биш, healthy биш, өмнө нь
+  // сэрэмжлээгүй үед. Локал/dev дохио бүртгэгдэнэ ч сэрэмжлүүлэхгүй: легит
+  // харилцагч кодоо local ажиллуулах нь хэвийн, "ком сольсон" гэх мэт нь
+  // худал дохио өгөхгүй (энэ бол мэдэгдэл — устгал/хориг БИШ тул хор ч үгүй).
   let alerted = false;
-  if (verdict !== "healthy" && !row.alertedAt) {
+  if (verdict !== "healthy" && !isLocal && !isDev && !row.alertedAt) {
     const who = matched
       ? `${matched.displayName} (${matched.slug})`
       : candidateSlug
