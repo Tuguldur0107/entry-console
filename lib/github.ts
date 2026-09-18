@@ -426,6 +426,11 @@ export async function getJobLogHead(fullName: string, jobId: number, lines = 60)
   return raw.split("\n").filter((l) => l.trim()).slice(0, lines).join("\n");
 }
 
+/** Ажлын БҮТЭН лог (шүүлтгүй) — алхмуудын стандарт гаралтыг уншихад. */
+export async function getJobLog(fullName: string, jobId: number): Promise<string> {
+  return getJobLogRaw(fullName, jobId);
+}
+
 async function getJobLogRaw(fullName: string, jobId: number): Promise<string> {
   const response = await fetch(`${API}/repos/${fullName}/actions/jobs/${jobId}/logs`, {
     headers: {

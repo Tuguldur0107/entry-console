@@ -6,12 +6,22 @@
 // хэрэглэгчийн PAT-аар ажилладаг тул энэ хязгаарлалтад ороогүй.
 //
 // Workflow нь салбарыг push хийгээд merge/шалгалтыг ТУСДАА НЭРТЭЙ алхмаар
-// гүйцэтгэдэг. Алхмын conclusion нь GitHub API-аар уншигддаг тул үр дүнг эндээс
-// сэргээж болно (step output нь API-аар уншигддаггүй).
+// гүйцэтгэдэг. Үр дүнг хоёр эх сурвалжаас уншина:
+//
+//  1) ЛОГ (найдвартай): «Дүгнэлт» алхам `Үр дүн: passed|failed|conflict` гэж
+//     хэвлэдэг. Энэ нь `steps.*.outcome`-оос бодогддог тул ҮНЭН.
+//  2) Алхмын conclusion (нөөц зам): ЗӨВХӨН ойролцоо. `continue-on-error: true`
+//     алхам УНАСАН ч GitHub API `conclusion: "success"` гэж буцаадаг (бодит
+//     алдаа нь зөвхөн `outcome`-д үлддэг, тэр нь API-аар уншигддаггүй) —
+//     тиймээс merge унасныг «Шалгалт» алхам АЖИЛЛААГҮЙГЭЭР нь таньдаг: тэр
+//     алхам `steps.mergetest.outcome == 'success'` үед л ажилладаг.
+//
+// (2)-ыг ганцаар ашиглавал conflict нь «unknown» болж, PR нь label-гүй
+// нээгдээд авто sync ЧИМЭЭГҮЙ зогсдог байв — smartgps 2026-09-16.
 import { config } from "./config";
 import { logEvent } from "./customers";
 import type { Customer } from "./db/schema";
-import { addLabel, createPull, listBranches, listOpenSyncPulls, listRunJobs, listWorkflowRuns, removeLabel } from "./github";
+import { addLabel, createPull, getJobLog, listBranches, listOpenSyncPulls, listRunJobs, listWorkflowRuns, removeLabel } from "./github";
 
 export type SyncResult = "passed" | "failed" | "conflict" | "unknown";
 
@@ -24,7 +34,34 @@ const LABELS: Record<Exclude<SyncResult, "unknown">, { name: string; color: stri
   conflict: { name: "sync-conflict", color: "b60205", description: "Merge conflict — гараар шийднэ" },
 };
 
-/** Сүүлийн дууссан sync ажиллагааны алхмуудаас үр дүнг гаргана. */
+/** «Дүгнэлт» алхмын хэвлэсэн `Үр дүн: …` мөрөөс уншина (ЦЭВЭР, тесттэй). */
+export function parseResultFromLog(log: string): SyncResult | null {
+  let found: SyncResult | null = null;
+  for (const line of log.split("\n")) {
+    // Логийн эхэнд ажиллах скрипт өөрөө ч хэвлэгддэг (`Үр дүн: $RESULT`) —
+    // тэр нь утга агуулаагүй тул тааруулагдахгүй. Сүүлийн таарсан нь эцсийнх.
+    const match = line.match(/Үр дүн:\s*(passed|failed|conflict)\b/i);
+    if (match) found = match[1].toLowerCase() as SyncResult;
+  }
+  return found;
+}
+
+/** Алхмын conclusion-оос үр дүнг ойролцоогоор гаргана (ЦЭВЭР, тесттэй). */
+export function resultFromSteps(
+  merge: { conclusion: string | null } | undefined,
+  checks: { conclusion: string | null } | undefined
+): SyncResult {
+  // Merge алхам огт байхгүй / алгасагдсан = fork аль хэдийн шинэчлэгдсэн.
+  if (!merge || merge.conclusion === "skipped") return "unknown";
+  if (merge.conclusion === "failure") return "conflict";
+  // Merge унасан үед л «Шалгалт» алхам алгасагддаг (түүний `if` нөхцөл).
+  if (!checks || checks.conclusion === "skipped") return "conflict";
+  if (checks.conclusion === "failure") return "failed";
+  if (checks.conclusion === "success") return "passed";
+  return "unknown";
+}
+
+/** Сүүлийн дууссан sync ажиллагааны үр дүн: эхлээд лог, дараа нь алхмууд. */
 export async function latestSyncResult(fullName: string): Promise<{ result: SyncResult; runUrl: string | null }> {
   const runs = await listWorkflowRuns(fullName, "upstream-sync.yml", 5).catch(() => []);
   const run = runs.find((r) => r.status === "completed");
@@ -35,10 +72,13 @@ export async function latestSyncResult(fullName: string): Promise<{ result: Sync
   const merge = find(MERGE_STEP);
   const checks = find(CHECK_STEP);
   if (!merge) return { result: "unknown", runUrl: run.htmlUrl };
-  if (merge.conclusion === "failure") return { result: "conflict", runUrl: run.htmlUrl };
-  if (checks?.conclusion === "failure") return { result: "failed", runUrl: run.htmlUrl };
-  if (merge.conclusion === "success" && checks?.conclusion === "success") return { result: "passed", runUrl: run.htmlUrl };
-  return { result: "unknown", runUrl: run.htmlUrl };
+
+  const job = jobs.find((j) => j.steps.some((st) => st.name.startsWith(MERGE_STEP)));
+  if (job) {
+    const fromLog = parseResultFromLog(await getJobLog(fullName, job.id).catch(() => ""));
+    if (fromLog) return { result: fromLog, runUrl: run.htmlUrl };
+  }
+  return { result: resultFromSteps(merge, checks), runUrl: run.htmlUrl };
 }
 
 const ALL_LABELS = Object.values(LABELS).map((l) => l.name);
