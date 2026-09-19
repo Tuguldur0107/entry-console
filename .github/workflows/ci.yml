@@ -1,0 +1,64 @@
+# CI — push/PR бүрд төрөл, lint, нэгж тест, production build, хамаарлын аудит.
+#
+# Яагаад: console нь Railway дээр `main`-аас deploy хийдэг тул merge хийсэн
+# даруйд амьд орно — шалгалтгүй бол унагаах алдаа шууд production-д гарна.
+# Core repo дээр яг ийм цоорхойн улмаас 2026-09-19-нд 3 deploy дараалан
+# унасан (`next build` нь `tsc`-ийн танихгүй client/server хилийн алдааг
+# барьдаг: "use client" component нь DB-тэй модуль импортлоход postgres
+# драйвер browser bundle-д орж `Can't resolve 'fs'` гэж унадаг).
+#
+# DATABASE_URL ШААРДАХГҮЙ: `lib/db/index.ts` нь lazy Proxy, `lib/config.ts`
+# нь getter — хоёулаа import хийхэд холбогдохгүй тул build бүрэн явна.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Next.js-ийн build кэш. `npm ci`-ийн ӨМНӨ: node_modules суусны дараа
+      # бол түлхүүрийн hashFiles хэдэн арван мянган файл хэшлэх болно.
+      # Кэш олдохгүй бол бүтэн build явна (алдаа болохгүй).
+      - name: Build кэш
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            next-${{ runner.os }}-
+
+      - name: Хамаарал суулгах
+        run: npm ci
+
+      # next-env.d.ts нь gitignore-д тул CI-д гараар үүсгэнэ (tsc-д хэрэгтэй).
+      - name: Next.js төрлийн лавлагаа
+        run: |
+          printf '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n' > next-env.d.ts
+
+      - name: Төрлийн шалгалт (tsc)
+        run: npx tsc --noEmit
+
+      - name: Lint (eslint)
+        run: npx eslint .
+
+      - name: Нэгж тест
+        run: npm test
+
+      # Railway-ийн deploy ЯГ энэ командаар build хийдэг.
+      - name: Build (next build — client/server хилийн шалгалт)
+        run: npm run build
+
+      - name: Хамаарлын аудит
+        run: npm audit --audit-level=high
