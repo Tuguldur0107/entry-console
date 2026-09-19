@@ -73,8 +73,14 @@ export const customers = pgTable("customers", {
   healthChangedAt: timestamp("health_changed_at", { withTimezone: true }),
   alertedAt: timestamp("alerted_at", { withTimezone: true }),
   lastDeployStatus: text("last_deploy_status"),
-  /** Core шинэчлэлтийг автоматаар: sync PR нээх + шалгалт давсан бол merge */
-  autoSync: boolean("auto_sync").notNull().default(false),
+  /**
+   * Core шинэчлэлтийг автоматаар: sync PR нээх + шалгалт давсан бол merge.
+   * ШИНЭ харилцагчид АСААЛТТАЙ (default true) — fork загварт merge нь
+   * conflict гарсан үед л хүний ажил байх ёстой; унтраалттай үед админ
+   * release бүрд харилцагч тус бүр дээр гараар merge хийх болдог.
+   * Унтраах нь ИЛ шийдвэр (харилцагчийн хуудас / PATCH /api/customers/<slug>).
+   */
+  autoSync: boolean("auto_sync").notNull().default(true),
   /** Sync-ийн саад (conflict, шалгалт унасан) — анхаарах зүйлсэд */
   syncNote: text("sync_note"),
   /**

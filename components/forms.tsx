@@ -25,6 +25,7 @@ import {
   rejectRequestAction,
   revokeUpstream,
   setAutoDeploy,
+  setAutoSyncAll,
   setCustomerStatus,
   syncAllCustomers,
   syncCustomer,
@@ -204,6 +205,37 @@ export function SyncAllButton({ latestTag, count }: { latestTag: string | null; 
       <button className="btn btn-sm" disabled={pending || !latestTag || count === 0} title={`${count} идэвхтэй харилцагчид ${latestTag ?? ""} sync`}
         onClick={() => { if (!confirm(`${count} харилцагчийн repo дээр ${latestTag} sync PR нээх үү?`)) return; start(async () => { const r = await syncAllCustomers(); setResult(r); if (r.ok) router.refresh(); }); }}>
         <Icons.refresh className="h-4 w-4" /> {pending ? "…" : `Бүгдийг ${latestTag ?? "—"} болгох`}
+      </button>
+      <Notice result={result} />
+    </div>
+  );
+}
+
+/**
+ * Авто sync-ийг эрхтэй БҮХ идэвхтэй харилцагчид нэг дор асаана.
+ * `off` = одоо унтраалттай байгаа тоо; 0 бол товч идэвхгүй (хийх зүйлгүй).
+ */
+export function AutoSyncAllButton({ off }: { off: number }) {
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  if (off === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        className="btn btn-sm"
+        disabled={pending}
+        title="Шалгалт давсан sync PR-ыг автоматаар merge хийнэ — conflict гарвал гараар шийднэ"
+        onClick={() => {
+          if (!confirm(`${off} харилцагчид авто sync асаах уу?\n\nШинэ release гармагц PR нээгдэж, tsc/lint/тест давсан бол автоматаар merge хийгдэнэ. Conflict гарвал merge хийхгүй — гараар шийднэ.`)) return;
+          start(async () => {
+            const r = await setAutoSyncAll(true);
+            setResult(r);
+            if (r.ok) router.refresh();
+          });
+        }}
+      >
+        <Icons.refresh className="h-4 w-4" /> {pending ? "…" : `${off} харилцагчид авто sync асаах`}
       </button>
       <Notice result={result} />
     </div>

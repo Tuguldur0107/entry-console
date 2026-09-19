@@ -72,6 +72,17 @@ export function HealthBadge({ health, behind, latest }: { health: Health | null;
   return <span className="badge badge-success">v{health.version ?? "?"}</span>;
 }
 
+/**
+ * Авто sync-ийн төлөв. `monitor.ts`-ийн нөхцөлтэй ИЖИЛ: эрхгүй бол асаалттай
+ * байсан ч ажиллахгүй тул «эрхгүй» гэж ил хэлнэ (худал ногоон гаргахгүй).
+ */
+export function AutoSyncBadge({ on, access, status }: { on: boolean; access: boolean; status: CustomerStatus }) {
+  if (status !== "active") return <span className="badge badge-muted badge-plain">—</span>;
+  if (!access) return <span className="badge badge-muted" title="Шинэчлэлт авах эрх цуцлагдсан — sync ажиллахгүй">эрхгүй</span>;
+  if (!on) return <span className="badge badge-warning" title="Release бүрд гараар merge хийнэ">гараар</span>;
+  return <span className="badge badge-success" title="Шалгалт давсан sync PR автоматаар merge хийгдэнэ">авто</span>;
+}
+
 export function RunBadge({ run }: { run: WorkflowRun | null }) {
   if (!run) return <span className="badge badge-muted badge-plain">—</span>;
   const cls = run.status !== "completed" ? "badge-warning" : run.conclusion === "success" ? "badge-success" : "badge-danger";

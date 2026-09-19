@@ -65,6 +65,11 @@ account token хэрэгтэй; дутуу устсан бол мөр «Архи
 мэдэгдэл Telegram / webhook (`lib/notify.ts`). **Авто sync:** харилцагч бүрд toggle — шинэ
 release гармагц upstream-sync PR, core-ийн workflow merge-ийг туршиж tsc/lint/test ажиллуулаад
 `sync-checks-passed` label тавьсан бол console merge хийнэ (Railway main-аас deploy).
+ШИНЭ харилцагчид **асаалттай** (`customers.auto_sync` default true) — fork загварт merge нь
+conflict гарсан үед л хүний ажил байх ёстой. Унтраалттай үлдсэн хуучин харилцагчдыг самбар
+эсвэл «Харилцагчид» хуудасны **«N харилцагчид авто sync асаах»** товчоор нэг дор шилжүүлнэ
+(шинэчлэлтийн эрхгүйг алгасна — тэдэнд асаасан ч sync ажиллахгүй). Жагсаалтын «Авто sync»
+багана нь `авто` / `гараар` / `эрхгүй` гэж ялгана.
 **Түр зогсоох:** Railway app + DB deployment устгана (volume хэвээр), идэвхжүүлэхэд дахин deploy.
 
 Core repo талд: Settings → Secrets → `PROVISION_TOKEN`, `UPSTREAM_READ_TOKEN`

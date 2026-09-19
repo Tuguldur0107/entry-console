@@ -1,11 +1,11 @@
 import Link from "next/link";
 
-import { QuickApproveButton } from "@/components/forms";
+import { AutoSyncAllButton, QuickApproveButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
-import { EmptyState, HealthBadge, PLAN_LABELS, PageHeader, RunBadge, STATUS_LABELS, StatusBadge, fmtDate, fmtMnt } from "@/components/ui";
+import { AutoSyncBadge, EmptyState, HealthBadge, PLAN_LABELS, PageHeader, RunBadge, STATUS_LABELS, StatusBadge, fmtDate, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { filterCustomers, loadDashboard } from "@/lib/customers";
+import { autoSyncStats, filterCustomers, loadDashboard } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Харилцагчид" };
@@ -18,6 +18,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const { latest, customers } = await loadDashboard();
   const signupUrl = `${config.self.publicUrl ?? ""}/signup`;
   const rows = filterCustomers(customers, q, status);
+  const sync = autoSyncStats(customers.map(({ customer: c }) => c));
   const csv = ["slug,name,register_no,contact,email,phone,status,plan,monthly_fee,repo,app_url,created_at",
     ...customers.map(({ customer: c }) => [c.slug, c.displayName, c.registerNo, c.contactName, c.contactEmail, c.contactPhone, c.status, c.plan, c.monthlyFee, c.githubRepo, c.appUrl, c.createdAt.toISOString()].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
 
@@ -25,7 +26,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-4">
       {deleted && <p className="notice notice-success">«{deleted}» устлаа — Railway service, GitHub repo (байсан бол), console бүртгэл.</p>}
       {status === "pending" && <p className="notice notice-info">Нээлттэй бүртгүүлэх хуудас: <span className="mono">{signupUrl}</span> — хүсэлт энд «Хүсэлт» төлөвтэй орж ирнэ; батлахад repo + Railway автоматаар үүснэ.</p>}
-      <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл`}>
+      {sync.off.length > 0 && (
+        <p className="notice notice-warning">
+          <strong>{sync.off.length} харилцагч гараар sync хийж байна</strong> — эдгээрт шинэ release гарах бүрд PR-ыг нь өөрөө merge хийх шаардлагатай.
+          Авто sync асаавал шалгалт (tsc/lint/тест) давсан PR автоматаар merge хийгдэнэ; conflict гарвал хэвээрээ хүлээнэ.
+        </p>
+      )}
+      <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл · авто sync ${sync.on}/${sync.eligible}`}>
+        <AutoSyncAllButton off={sync.off.length} />
         <a href={`data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + csv)}`} download="entry-customers.csv" className="btn btn-sm"><Icons.download className="h-4 w-4" /> CSV</a>
         <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>
       </PageHeader>
@@ -54,7 +62,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           <EmptyState title="Илэрц алга" sub={q ? `«${q}» гэсэн хайлтад тохирох харилцагч байхгүй` : "Энэ төлөвт харилцагч алга"} />
         ) : (
           <table className="table">
-            <thead><tr><th>Харилцагч</th><th>Төлөв</th><th>Багц</th><th>Deploy</th><th>Sync</th><th>Холбоо барих</th><th>Үүссэн</th></tr></thead>
+            <thead><tr><th>Харилцагч</th><th>Төлөв</th><th>Багц</th><th>Deploy</th><th>Sync</th><th>Авто sync</th><th>Холбоо барих</th><th>Үүссэн</th></tr></thead>
             <tbody>
               {rows.map(({ customer: c, repo, health, behind, lastSync }) => (
                 <tr key={c.id}>
@@ -66,6 +74,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                   <td className="text-text-2">{PLAN_LABELS[c.plan]}{Number(c.monthlyFee) > 0 && <div className="text-xs text-text-3">{fmtMnt(c.monthlyFee)}/сар</div>}</td>
                   <td><HealthBadge health={health} behind={behind} latest={latest?.tagName ?? null} /></td>
                   <td><RunBadge run={lastSync} /></td>
+                  <td><AutoSyncBadge on={c.autoSync} access={c.upstreamAccess} status={c.status} /></td>
                   <td className="text-text-2">{c.contactName ?? "—"}{c.contactPhone && <div className="text-xs text-text-3">{c.contactPhone}</div>}</td>
                   <td className="text-text-3">{fmtDate(c.createdAt, false)}</td>
                 </tr>
