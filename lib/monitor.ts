@@ -173,6 +173,13 @@ export async function runMonitor(): Promise<MonitorSummary> {
       } catch (error) {
         summary.errors.push(`${c.slug} sync: ${msg(error)}`);
       }
+    } else if (c.syncNote) {
+      // Авто sync унтарсан / эрх цуцлагдсан / идэвхгүй харилцагч дээр дээрх
+      // блок ОГТ ажиллахгүй тул syncNote дахин тооцоологдохгүй — PR нь хожим
+      // merge хийгдсэн ч самбарт «Авто sync саатсан: PR #N …» мөнхөд үлддэг
+      // байв. Тэмдэглэл нь зөвхөн авто sync-ийн одоогийн байдлыг илэрхийлдэг
+      // тул энд цэвэрлэнэ (блок дахин ажиллавал шинээр бичигдэнэ).
+      patch.syncNote = null;
     }
 
     if (Object.keys(patch).length > 0)

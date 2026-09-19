@@ -254,7 +254,12 @@ export function computeAttention(
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Deploy хүрэхгүй: ${health.error ?? "unknown"}` });
     if (behind)
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Хувилбар v${health?.version} — core ${latest?.tagName}. Sync хийх` });
-    if (lastSync && lastSync.status === "completed" && lastSync.conclusion !== "success")
+    // Унасан sync run нь ХОЦРОГДОЛ хэвээр байгаа үед л асуудал. Харилцагч
+    // core-ийн сүүлийн хувилбар дээр байвал (behind === false) тэр ажил өөр
+    // замаар (гараар sync, дахин ажиллуулсан run) аль хэдийн хийгдсэн гэсэн
+    // үг — хуучирсан улаан тэмдэглэгээ самбарт мөнхөд үлдэхээс сэргийлнэ.
+    // behind === null (хувилбар уншигдаагүй) үед анхааруулгыг ХЭВЭЭР үлдээнэ.
+    if (behind !== false && lastSync && lastSync.status === "completed" && lastSync.conclusion !== "success")
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Сүүлийн upstream-sync амжилтгүй" });
     if (c.healthOk === false && !(health && !health.ok))
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: `Хяналт: апп хүрэхгүй${c.healthChangedAt ? ` (${Math.round((Date.now() - c.healthChangedAt.getTime()) / 60000)} мин)` : ""}` });
