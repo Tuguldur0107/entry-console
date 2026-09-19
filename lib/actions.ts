@@ -384,6 +384,11 @@ export async function syncAllCustomers(): Promise<ActionResult> {
     }
     try {
       const branch = await getDefaultBranch(row.githubRepo);
+      // Workflow файл хуучирсан бол sync дундаа унана (core-д алхам нэмэгдсэн,
+      // secret нэр солигдсон г.м.) — `runMonitor`-тай ИЖИЛ байдлаар эхлээд
+      // core-ийнхтэй тэнцүүлнэ. Алдааг залгина: тэнцүүлж чадаагүй ч хуучин
+      // workflow-гоор оролдох нь огт оролдохгүй байхаас дээр.
+      await bootstrapSyncWorkflow(row).catch(() => undefined);
       await dispatchWorkflow(row.githubRepo, "upstream-sync.yml", branch, { ref: target });
       await logEvent(row.id, "sync", `Бөөн sync: ${target}`);
       started += 1;
@@ -485,7 +490,47 @@ export async function setAutoSync(slug: string, on: boolean): Promise<ActionResu
   await db.update(customers).set({ autoSync: on, syncNote: null, updatedAt: new Date() }).where(eq(customers.id, customer.id));
   await logEvent(customer.id, "sync", on ? "Авто sync асаав: шинэ release → PR → шалгалт давбал merge" : "Авто sync унтраав");
   revalidatePath(`/customers/${slug}`);
+  revalidatePath("/customers");
+  revalidatePath("/");
   return { ok: true, message: on ? "Авто sync асаалттай" : "Авто sync унтраалттай" };
+}
+
+/**
+ * Авто sync-ийг БҮХ идэвхтэй, шинэчлэлтийн эрхтэй харилцагчид нэг дор асаана
+ * (эсвэл унтраана) — харилцагч бүрийн хуудсаар орохгүйгээр.
+ *
+ * Эрх цуцлагдсан харилцагчийг ОРХИНО: тэдэнд asaaсан ч `runMonitor`
+ * `upstreamAccess`-гүй бол ажиллахгүй тул «асаалттай» гэсэн худал төлөв
+ * үүснэ. Хариунд нь хэдийг алгассаныг ИЛ хэлнэ.
+ */
+export async function setAutoSyncAll(on: boolean): Promise<ActionResult> {
+  await requireSession();
+  let rows: (typeof customers.$inferSelect)[];
+  try {
+    rows = await db.select().from(customers).where(eq(customers.status, "active"));
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+  const eligible = rows.filter((row) => row.upstreamAccess);
+  const blocked = rows.length - eligible.length;
+  const targets = eligible.filter((row) => row.autoSync !== on);
+  for (const row of targets) {
+    await db
+      .update(customers)
+      .set({ autoSync: on, syncNote: null, updatedAt: new Date() })
+      .where(eq(customers.id, row.id));
+    await logEvent(row.id, "sync", on ? "Авто sync асаав (бөөнөөр)" : "Авто sync унтраав (бөөнөөр)");
+  }
+  revalidatePath("/");
+  revalidatePath("/customers");
+  const verb = on ? "асаалаа" : "унтраалаа";
+  return {
+    ok: true,
+    message:
+      targets.length === 0
+        ? `Өөрчлөх зүйл алга — эрхтэй ${eligible.length} харилцагч бүгд ${on ? "асаалттай" : "унтраалттай"} байна`
+        : `${targets.length} харилцагчид авто sync ${verb}${blocked ? ` · ${blocked} нь шинэчлэлтийн эрхгүй тул алгаслаа` : ""}`,
+  };
 }
 
 /** Backup хуваарь/custom domain нөхөх (хуучин харилцагч эсвэл унасан алхам). */

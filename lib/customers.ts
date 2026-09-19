@@ -273,6 +273,11 @@ export function computeAttention(
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `${c.customDomain} DNS хүлээж байна — CNAME → ${c.dnsTarget ?? "?"}` });
     if (c.status === "active" && !c.upstreamAccess)
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: "Шинэчлэлт авах эрх цуцлагдсан — шинэ хувилбар очихгүй (захиалга)" });
+    // Эрхтэй атлаа авто sync унтраалттай = release бүрд ГАРААР merge хийх
+    // ажил. Энэ нь тохиргооны сонголт болохоос алдаа биш тул `info`, гэхдээ
+    // ил харагдаж байж админ мэдсээр байж унтраасан эсэхээ шийднэ.
+    if (c.status === "active" && c.upstreamAccess && !c.autoSync)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: "Авто sync унтраалттай — шинэчлэлт бүрд гараар merge хийнэ" });
     if (c.syncNote)
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Авто sync саатсан: ${c.syncNote}` });
     if (c.railwayServiceId && !c.railwayRepoConnected)
@@ -283,6 +288,42 @@ export function computeAttention(
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: c.railwayServiceId ? "Deploy хаяг алга" : "Deploy хийгдээгүй — харилцагчийн хуудаснаас «Railway-д deploy» дарна" });
   }
   return out;
+}
+
+/** «Бүгдэд авто sync асаах»-д хэрэгтэй талбарууд */
+export type AutoSyncScope = Pick<Customer, "slug" | "status" | "autoSync" | "upstreamAccess">;
+
+export interface AutoSyncStats {
+  /** Авто sync БОДИТООР ажиллаж чадах (идэвхтэй + шинэчлэлтийн эрхтэй) */
+  eligible: number;
+  /** Тэдгээрийн дотроос асаалттай нь */
+  on: number;
+  /** Асаах боломжтой атлаа унтраалттай — товчны зорилт */
+  off: string[];
+  /** Идэвхтэй ч эрх цуцлагдсан — асаах нь утгагүй (эрхээ эхлээд сэргээнэ) */
+  blocked: number;
+}
+
+/**
+ * Авто sync-ийн хамрах хүрээ (ЦЭВЭР, тесттэй).
+ *
+ * `monitor.ts` нь `autoSync && status === "active" && upstreamAccess` гурвыг
+ * зэрэг шаарддаг — энэ тоолуур ЯГ тэр нөхцөлөөр бодогдоно, эс тэгвээс UI
+ * «асаалттай» гэж хэлээд бодит sync явахгүй байх зөрүү үүснэ.
+ */
+export function autoSyncStats(items: AutoSyncScope[]): AutoSyncStats {
+  const stats: AutoSyncStats = { eligible: 0, on: 0, off: [], blocked: 0 };
+  for (const c of items) {
+    if (c.status !== "active") continue;
+    if (!c.upstreamAccess) {
+      stats.blocked += 1;
+      continue;
+    }
+    stats.eligible += 1;
+    if (c.autoSync) stats.on += 1;
+    else stats.off.push(c.slug);
+  }
+  return stats;
 }
 
 export interface ActivityItem extends CustomerEvent {

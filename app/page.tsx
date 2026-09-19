@@ -1,11 +1,11 @@
 import Link from "next/link";
 
-import { QuickApproveButton, SyncAllButton } from "@/components/forms";
+import { AutoSyncAllButton, QuickApproveButton, SyncAllButton } from "@/components/forms";
 import { Icons } from "@/components/icons";
 import { EVENT_LABELS, EmptyState, HealthBadge, Kpi, PageHeader, RunBadge, Section, StatusBadge, fmtAgo, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
+import { autoSyncStats, computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
 import { isRequestStatus } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export default async function DashboardPage() {
   const downCount = visible.filter((c) => c.health && !c.health.ok).length;
   const mrr = active.reduce((s, c) => s + Number(c.customer.monthlyFee), 0);
   const attention = computeAttention(visible, latest, githubErrors.length === 0);
+  const sync = autoSyncStats(visible.map((c) => c.customer));
 
   return (
     <div className="space-y-5">
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
         title="Самбар"
         sub={<>Core {latest ? <a href={latest.htmlUrl} target="_blank" rel="noreferrer" className="mono text-text-1 hover:underline">{latest.tagName}</a> : "release алга"} · {config.coreRepo}</>}
       >
+        <AutoSyncAllButton off={sync.off.length} />
         <SyncAllButton latestTag={latest?.tagName ?? null} count={active.filter((c) => c.behind !== false || !c.health).length} />
         <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>
       </PageHeader>
@@ -63,7 +65,7 @@ export default async function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${visible.length}${provisioning.length ? ` · үүсгэж байна ${provisioning.length}` : ""}${requests.length ? ` · хүсэлт ${requests.length}` : ""}`} href="/customers" />
         <Kpi label="Сарын орлого (MRR)" value={fmtMnt(mrr)} sub="идэвхтэй харилцагчдын сарын төлбөр" />
-        <Kpi label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} sub={latest ? `core ${latest.tagName}` : undefined} />
+        <Kpi label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} sub={`${latest ? `core ${latest.tagName} · ` : ""}авто sync ${sync.on}/${sync.eligible}`} />
         <Kpi label="Хүрэхгүй deploy" value={String(downCount)} tone={downCount > 0 ? "danger" : "success"} sub="/api/health хариу" />
       </div>
 

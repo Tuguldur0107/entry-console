@@ -77,6 +77,11 @@ export function ensureSchema(): Promise<void> {
         `alter table "customers" add column if not exists "upstream_key_id" integer`,
         `alter table "customers" add column if not exists "sync_push_key_id" integer`,
         `create table if not exists "console_state" ("key" text primary key, "value" jsonb not null, "updated_at" timestamptz not null default now())`,
+        // Авто sync нь ШИНЭ харилцагчид асаалттай (v2.5). Зөвхөн DEFAULT-ыг
+        // солино — байгаа мөрүүдийн сонголтыг ХӨНДӨХГҮЙ (админ ухамсартай
+        // унтраасан байж болно; түүнийг нь чимээгүй буцааж асаахгүй). Хуучин
+        // харилцагчдыг «Бүгдэд асаах» товчоор нэг дор шилжүүлнэ.
+        `alter table "customers" alter column "auto_sync" set default true`,
       ])
         await db.execute(sql.raw(ddl));
     })().catch((error) => {
