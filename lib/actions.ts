@@ -17,8 +17,8 @@ import { runMonitor } from "./monitor";
 import { bootstrapSyncWorkflow, grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
-import { SaasApiError, saveSaasSubscription } from "./saas-api";
-import { parseSaasSubscriptionForm } from "./saas-subscriptions";
+import { SaasApiError, savePlanPrices, saveSaasSubscription } from "./saas-api";
+import { parsePlanPricesForm, parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
@@ -635,7 +635,7 @@ export async function cleanupOrphanVolumes(): Promise<ActionResult> {
 export async function saveSubscription(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireSession();
   const fields: Record<string, string> = {};
-  for (const key of ["organization_id", "plan_id", "status", "seats", "trial_ends_at", "current_period_end", "overrides", "note"])
+  for (const key of ["organization_id", "plan_id", "status", "seats", "price_per_seat", "trial_ends_at", "current_period_end", "overrides", "note"])
     fields[key] = text(formData, key);
   const parsed = parseSaasSubscriptionForm(fields);
   if (!parsed.ok) return parsed;
@@ -644,6 +644,27 @@ export async function saveSubscription(_prev: ActionResult | null, formData: For
     revalidatePath("/subscriptions");
     revalidatePath(`/subscriptions/${saved.organizationId}`);
     return { ok: true, message: `${saved.orgName}: багц хадгалагдлаа` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** SaaS багцын ҮНЭ бичих — core-ийн /api/platform/plan-prices (PUT). */
+export async function savePlanPricesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const fields: Record<string, string> = {};
+  for (const [key, value] of formData.entries())
+    if (key.startsWith("price_")) fields[key] = String(value ?? "").trim();
+  const parsed = parsePlanPricesForm(fields);
+  if (!parsed.ok) return parsed;
+  try {
+    const { changes } = await savePlanPrices(parsed.prices, "console");
+    revalidatePath("/subscriptions/pricing");
+    revalidatePath("/subscriptions");
+    return {
+      ok: true,
+      message: changes.length === 0 ? "Өөрчлөлтгүй — үнэ хэвээр" : `Үнэ шинэчлэгдлээ · ${changes.join(" · ")}`,
+    };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

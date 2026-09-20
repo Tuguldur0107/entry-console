@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { SubscriptionForm } from "@/components/subscription-form";
-import { fmtDate, PageHeader, Section } from "@/components/ui";
+import { fmtDate, fmtMnt, PageHeader, Section } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getSaasSubscription, saasApiConfigured, SaasApiError } from "@/lib/saas-api";
 import {
@@ -68,6 +68,21 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
             <dl className="space-y-2 text-sm">
               <Row label="Багц">{SAAS_PLAN_LABELS[row.planId] ?? row.planId}</Row>
               <Row label="Статус"><span className={`badge ${SAAS_STATUS_BADGE[row.status] ?? "badge-muted"}`}>{SAAS_STATUS_LABELS[row.status] ?? row.status}</span></Row>
+              <Row label="Үнэ / суудал">
+                {row.pricePerSeatMnt === null ? (
+                  <span className="text-text-3">хэлэлцээрээр</span>
+                ) : (
+                  <>
+                    {fmtMnt(row.pricePerSeatMnt)}
+                    {row.pricePerSeatOverrideMnt !== null ? (
+                      <span className="ml-1 text-xs text-warning">тусгай</span>
+                    ) : null}
+                  </>
+                )}
+              </Row>
+              <Row label="Сарын дүн">
+                {row.monthlyAmountMnt === null ? <span className="text-text-3">—</span> : fmtMnt(row.monthlyAmountMnt)}
+              </Row>
               <Row label="Суудал"><span className={seats.over ? "text-danger font-medium" : ""}>{seats.text}</span></Row>
               <Row label="Бичих эрх">
                 {row.writable ? <span className="badge badge-success">Нээлттэй</span> : <span className="badge badge-danger">Зөвхөн унших</span>}

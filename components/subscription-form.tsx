@@ -53,6 +53,20 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
         <Field label="Төлбөрийн үе дуусах" hint="Хоцорсон бол энэ огнооноос 14 хоног grace">
           <input name="current_period_end" className="input" type="date" defaultValue={row.currentPeriodEnd ?? ""} />
         </Field>
+        <Field
+          label="Тусгай үнэ (₮ / суудал / сар)"
+          hint={`Хоосон = багцын үнэ дагана${
+            row.pricePerSeatMnt === null ? "" : ` (одоо ${row.pricePerSeatMnt.toLocaleString("en-US")}₮)`
+          }`}
+        >
+          <input
+            name="price_per_seat"
+            className="input"
+            inputMode="numeric"
+            placeholder="багцын үнэ"
+            defaultValue={row.pricePerSeatOverrideMnt === null ? "" : String(row.pricePerSeatOverrideMnt)}
+          />
+        </Field>
         <Field label="Тэмдэглэл" hint="Дотоод — гэрээний дугаар, төлбөрийн лавлагаа г.м.">
           <input name="note" className="input" defaultValue={row.note ?? ""} maxLength={500} />
         </Field>
