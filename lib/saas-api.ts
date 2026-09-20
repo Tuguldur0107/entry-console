@@ -4,7 +4,6 @@
 
 import { config } from "./config";
 import type {
-  SaasPlanId,
   SaasPlanPriceInput,
   SaasPlanPricePeriod,
   SaasPlanPrices,
