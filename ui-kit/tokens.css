@@ -1,0 +1,329 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Entry Accounting — ДИЗАЙН ТОКЕНЫ ЦОРЫН ГАНЦ ЭХ СУРВАЛЖ
+ *
+ *  Энэ файлыг хоёр газар хэрэглэнэ:
+ *    1. app/globals.css  → @import "../ui-kit/tokens.css"   (бүтэн систем)
+ *    2. ui-kit/preview.html → <link rel="stylesheet">        (статик preview)
+ *
+ *  Өнгө өөрчлөх бол ЗӨВХӨН энд. Component дотор hardcode хийхийг хориглоно.
+ *  Дэлгэрэнгүй: ui-kit/README.md
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── LIGHT MODE — :root токенууд .dark-аас ӨМНӨ байх ЁСТОЙ ─────────────────
+ *  `:root` ба `.dark` хоёулаа specificity (0,1,0) — тэнцүү. Тэгш үед СҮҮЛД
+ *  бичигдсэн rule ялдаг тул `.dark` нь `:root`-аас доор байх ёстой.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Editorial Ivory ─────────────────────────────────────────────────────
+     Navy = trust / accounting structure and the light-mode interaction accent.
+     Light mode intentionally reads like warm paper instead of a white app. */
+  --ea-primary:       #263C60;
+  --ea-primary-700:   #1B2D4B;
+  --ea-primary-500:   #405D84;
+  --ea-primary-100:   #E3E8F0;
+  --ea-primary-50:    #EFF2F6;
+
+  --ea-accent:        #335B8A;
+  --ea-accent-strong: #203A60;
+  --ea-accent-soft:   #7893B7;
+  --ea-accent-bg:     #E7EDF5;
+  --ea-accent-border: rgba(38,60,96,0.28);
+  /* Backward-compatible aliases; шинэ code `--ea-accent-*` ашиглана. */
+  --ea-violet:        var(--ea-accent);
+  --ea-violet-strong: var(--ea-accent-strong);
+  --ea-violet-soft:   var(--ea-accent-soft);
+  --ea-violet-bg:     var(--ea-accent-bg);
+  --ea-violet-border: var(--ea-accent-border);
+  --ea-gold:          #B58A42;
+
+  --ea-bg:            #F4F0E7;
+  --ea-bg-2:          #EEE8DD;
+  --ea-bg-3:          #E7DFD2;
+  --ea-surface:       #FBF8F2;
+  --ea-surface-raised:#FFFCF7;
+  --ea-surface-glass: rgba(255,253,248,0.72);
+  --ea-border:        #D9D1C5;
+  --ea-border-strong: #C9BFB1;
+
+  --ea-text-1: #172036;
+  --ea-text-2: #354158;
+  --ea-text-3: #566075;
+  --ea-text-4: #656E80;
+
+  /* ── Interaction language ────────────────────────────────────────────────
+     Hover is temporary and quiet; selected/focus is persistent dark blue. */
+  --ea-interactive:     var(--ea-accent);
+  --ea-hover-subtle:    color-mix(in srgb, var(--ea-accent) 6%, var(--ea-surface));
+  --ea-hover-strong:    color-mix(in srgb, var(--ea-accent) 10%, var(--ea-surface));
+  --ea-hover-border:    color-mix(in srgb, var(--ea-accent) 28%, var(--ea-border-strong));
+  --ea-selected-bg:     color-mix(in srgb, var(--ea-accent) 10%, var(--ea-surface));
+  --ea-selected-border: color-mix(in srgb, var(--ea-accent) 48%, var(--ea-border-strong));
+  --ea-shine:           rgba(255,255,255,0.72);
+
+  /* Семантик: `-fg` = ТЕКСТЭД, суурь = дэвсгэр/хүрээ/дүрсэнд,
+     `-solid` = дүүрэн товчны дэвсгэр (`-solid-fg` = түүн дээрх текст) */
+  --ea-success:    #10B981;
+  --ea-success-fg: #047857;
+  --ea-success-bg: #ECFDF5;
+  --ea-danger:     #EF4444;
+  --ea-danger-fg:  #B91C1C;
+  --ea-danger-bg:  #FEF2F2;
+  --ea-danger-solid:    #DC2626;
+  --ea-danger-solid-fg: #FFFFFF;
+  --ea-warning:    #F59E0B;
+  --ea-warning-fg: #B45309;
+  --ea-warning-bg: #FFFBEB;
+
+  /* Modal / drawer-ийн бүрхүүл */
+  --ea-overlay: rgba(0,0,0,0.45);
+
+  /* Auth hero panel дээрх элементүүд (панель нь --ea-hero-gradient) */
+  --ea-hero-fg:     #FFFFFF;
+  --ea-hero-rule:   rgba(255,255,255,0.10);
+  --ea-hero-accent: #A7F3D0;
+  --ea-hero-amount: #FFD79A;
+  --ea-hero-surface:     rgba(255,255,255,0.06);
+  --ea-hero-border:      rgba(255,255,255,0.10);
+  --ea-hero-border-soft: rgba(255,255,255,0.06);
+  --ea-hero-muted:       rgba(255,255,255,0.25);
+  --ea-hero-rule-strong: rgba(255,255,255,0.30);
+
+  --ea-font-sans:    var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --ea-font-display: var(--font-fraunces), 'Fraunces', 'Playfair Display', serif;
+  --ea-font-mono:    var(--font-geist-mono), ui-monospace, monospace;
+
+  --ea-r-md:  6px;
+  --ea-r-lg:  10px;
+  --ea-r-xl:  14px;
+
+  --ea-shadow-2:
+    0 1px 2px rgba(53,41,25,0.05),
+    0 10px 28px -12px rgba(53,41,25,0.16);
+  --ea-shadow-3:
+    0 28px 70px -20px rgba(37,26,58,0.28),
+    0 8px 24px -12px rgba(53,41,25,0.18);
+  --ea-shadow-hover:
+    0 16px 34px -22px rgba(27,36,67,0.45),
+    0 0 22px -16px rgba(51,91,138,0.48);
+  --ea-shadow-button:
+    inset 0 1px 0 var(--ea-shine),
+    0 8px 22px -12px rgba(38,60,96,0.42);
+  --ea-shadow-button-hover:
+    inset 0 1px 0 var(--ea-shine),
+    0 12px 28px -12px rgba(51,91,138,0.50);
+  --ea-focus: 0 0 0 3px rgba(38,60,96,0.22);
+
+  --ea-motion-press: 70ms;
+  --ea-motion-hover: 120ms;
+  --ea-motion-lift:  180ms;
+  --ea-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ea-glass-filter: blur(22px) saturate(135%);
+
+  /* ── Icon Kit ────────────────────────────────────────────────────────────
+     Functional icon-уудын хэмжээ, stroke, өнгө, action hit-area-г нэг газраас
+     удирдана. components/ui/icon*.tsx эдгээрээс өөр утга hardcode хийхгүй. */
+  --ea-icon-size-xs: 12px;
+  --ea-icon-size-sm: 14px;
+  --ea-icon-size-md: 16px;
+  --ea-icon-size-lg: 18px;
+  --ea-icon-size-xl: 20px;
+  --ea-icon-size-2xl: 24px;
+  --ea-icon-stroke-width: 1.75;
+
+  --ea-icon-action-xs: 24px;
+  --ea-icon-action-sm: 28px;
+  --ea-icon-action-md: 32px;
+  --ea-icon-action-lg: 36px;
+  --ea-icon-action-radius: var(--ea-r-md);
+
+  --ea-icon-default: var(--ea-text-2);
+  --ea-icon-muted: var(--ea-text-4);
+  --ea-icon-interactive: var(--ea-interactive);
+  --ea-icon-selected: var(--ea-interactive);
+  --ea-icon-success: var(--ea-success-fg);
+  --ea-icon-warning: var(--ea-warning-fg);
+  --ea-icon-danger: var(--ea-danger-fg);
+  --ea-icon-inverse: var(--primary-foreground);
+  --ea-icon-disabled-opacity: 0.42;
+
+  --ea-icon-action-bg: transparent;
+  --ea-icon-action-border: transparent;
+  --ea-icon-action-hover-bg: var(--ea-hover-subtle);
+  --ea-icon-action-hover-border: var(--ea-hover-border);
+  --ea-icon-action-selected-bg: var(--ea-selected-bg);
+  --ea-icon-action-selected-border: var(--ea-selected-border);
+
+  /* Warm paper, restrained dark-blue light and a book-cloth gold undertone. */
+  --ea-bg-gradient:
+    radial-gradient(70% 55% at 72% -8%, rgba(51,91,138,0.12) 0%, transparent 62%),
+    radial-gradient(48% 42% at 10% 28%, rgba(181,138,66,0.08) 0%, transparent 66%),
+    linear-gradient(180deg, #F7F3EB 0%, var(--ea-bg) 72%);
+
+  --ea-hero-gradient:
+    radial-gradient(circle at 88% 8%, rgba(51,91,138,0.26), transparent 34%),
+    linear-gradient(155deg, #263C60 0%, #1B2D4B 72%, #203A60 118%);
+
+  /* ── shadcn токенууд --ea-*-д уягдана ── */
+  --background: var(--ea-bg);
+  --foreground: var(--ea-text-1);
+  --card: var(--ea-surface);
+  --card-foreground: var(--ea-text-1);
+  --popover: var(--ea-surface);
+  --popover-foreground: var(--ea-text-1);
+  --primary: var(--ea-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--ea-bg-2);
+  --secondary-foreground: var(--ea-text-1);
+  --muted: var(--ea-bg-2);
+  --muted-foreground: var(--ea-text-3);
+  --accent: var(--ea-hover-subtle);
+  --accent-foreground: var(--ea-text-1);
+  --destructive: var(--ea-danger);
+  --border: var(--ea-border);
+  --input: var(--ea-border-strong);
+  --ring: var(--ea-interactive);
+  --chart-1: var(--ea-primary);
+  --chart-2: #10B981;
+  --chart-3: #F59E0B;
+  --chart-4: #EF4444;
+  --chart-5: var(--ea-accent);
+  --radius: 0.625rem;
+  --sidebar: var(--ea-surface-glass);
+  --sidebar-foreground: var(--ea-text-1);
+  --sidebar-primary: var(--ea-interactive);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--ea-hover-subtle);
+  --sidebar-accent-foreground: var(--ea-text-1);
+  --sidebar-border: var(--ea-border);
+  --sidebar-ring: var(--ea-interactive);
+}
+
+/* ─── DARK MODE — Cosmic Glass ─────────────────────────────────────────────
+ *  Navy-black суурь, lavender primary, violet interaction/decorative accent.
+ *  Semantic success/warning/danger өнгүүд утгаа хадгална.
+ * ────────────────────────────────────────────────────────────────────────── */
+.dark {
+  /* Cosmic Glass — navy-black base, violet replaces cyan decoration. */
+  --ea-primary:       #B49AF7;
+  --ea-primary-700:   #C5B2FA;
+  --ea-primary-500:   #D4C7FC;
+  --ea-primary-100:   #221B38;
+  --ea-primary-50:    rgba(139,92,246,0.15);
+
+  --ea-accent:        #A78BFA;
+  --ea-accent-strong: #8B5CF6;
+  --ea-accent-soft:   #C4B5FD;
+  --ea-accent-bg:     rgba(139,92,246,0.15);
+  --ea-accent-border: rgba(167,139,250,0.30);
+  --ea-violet:        var(--ea-accent);
+  --ea-violet-strong: var(--ea-accent-strong);
+  --ea-violet-soft:   var(--ea-accent-soft);
+  --ea-violet-bg:     var(--ea-accent-bg);
+  --ea-violet-border: var(--ea-accent-border);
+  --ea-gold:          #D6B16C;
+
+  --ea-bg:            #070711;
+  --ea-bg-2:          #0E0D17;
+  --ea-bg-3:          #171424;
+  --ea-surface:       #0B0B13;
+  --ea-surface-raised:#12101D;
+  --ea-surface-glass: rgba(14,13,24,0.66);
+  --ea-border:        rgba(221,214,254,0.11);
+  --ea-border-strong: rgba(221,214,254,0.20);
+
+  --ea-text-1: #F7F4FB;
+  --ea-text-2: #DDD7E8;
+  --ea-text-3: #A8A0B5;
+  --ea-text-4: #8D859B;
+
+  --ea-interactive:     var(--ea-accent);
+  --ea-hover-subtle:    color-mix(in srgb, var(--ea-accent) 8%, var(--ea-surface));
+  --ea-hover-strong:    color-mix(in srgb, var(--ea-accent) 13%, var(--ea-surface));
+  --ea-hover-border:    color-mix(in srgb, var(--ea-accent) 34%, var(--ea-border-strong));
+  --ea-selected-bg:     color-mix(in srgb, var(--ea-accent) 15%, var(--ea-surface));
+  --ea-selected-border: color-mix(in srgb, var(--ea-accent) 52%, var(--ea-border-strong));
+  --ea-shine:           rgba(255,255,255,0.10);
+
+  --ea-success:    #34D399;
+  --ea-success-fg: #6EE7B7;
+  --ea-success-bg: rgba(52,211,153,0.12);
+  --ea-danger:     #F87171;
+  --ea-danger-fg:  #FCA5A5;
+  --ea-danger-bg:  rgba(248,113,113,0.12);
+  --ea-danger-solid:    #F87171;
+  --ea-danger-solid-fg: #1A0A0A;
+  --ea-warning:    #FBBF24;
+  --ea-warning-fg: #FCD34D;
+  --ea-warning-bg: rgba(251,191,36,0.12);
+
+  /* Modal / drawer-ийн бүрхүүл — тас хар дээр илүү гүн */
+  --ea-overlay: rgba(0,0,0,0.65);
+
+  /* Auth hero panel — тас хар дээр ижил цагаан текст */
+  --ea-hero-fg:     #FFFFFF;
+  --ea-hero-rule:   rgba(255,255,255,0.08);
+  --ea-hero-accent: #6EE7B7;
+  --ea-hero-amount: #FFD79A;
+
+  --ea-shadow-2:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 16px 34px -18px rgba(0,0,0,0.72);
+  --ea-shadow-3:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 32px 84px -20px rgba(0,0,0,0.82),
+    0 14px 40px -24px rgba(124,58,237,0.55);
+  --ea-shadow-hover:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 22px 44px -24px rgba(0,0,0,0.88),
+    0 0 28px -18px rgba(167,139,250,0.70);
+  --ea-shadow-button:
+    inset 0 1px 0 var(--ea-shine),
+    0 10px 26px -12px rgba(139,92,246,0.58);
+  --ea-shadow-button-hover:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    0 14px 34px -12px rgba(167,139,250,0.68);
+
+  --ea-focus: 0 0 0 3px rgba(167,139,250,0.30);
+
+  --ea-bg-gradient:
+    radial-gradient(68% 52% at 72% -8%, rgba(139,92,246,0.15) 0%, transparent 62%),
+    radial-gradient(44% 38% at 9% 30%, rgba(214,177,108,0.06) 0%, transparent 68%),
+    linear-gradient(180deg, #0B0915 0%, var(--ea-bg) 72%);
+
+  --ea-hero-gradient:
+    radial-gradient(circle at 86% 10%, rgba(139,92,246,0.24), transparent 36%),
+    linear-gradient(160deg, #14111E 0%, #090811 74%, #160E26 116%);
+
+  /* ── shadcn токенууд --ea-*-д уягдана ── */
+  --background: var(--ea-bg);
+  --foreground: var(--ea-text-1);
+  --card: var(--ea-surface);
+  --card-foreground: var(--ea-text-1);
+  --popover: var(--ea-surface);
+  --popover-foreground: var(--ea-text-1);
+  --primary: var(--ea-primary);
+  --primary-foreground: #090711;
+  --secondary: var(--ea-bg-2);
+  --secondary-foreground: var(--ea-text-1);
+  --muted: var(--ea-bg-2);
+  --muted-foreground: var(--ea-text-3);
+  --accent: var(--ea-hover-subtle);
+  --accent-foreground: var(--ea-text-1);
+  --destructive: var(--ea-danger);
+  --border: var(--ea-border);
+  --input: var(--ea-border-strong);
+  --ring: var(--ea-interactive);
+  --chart-1: var(--ea-primary);
+  --chart-2: #34D399;
+  --chart-3: #FBBF24;
+  --chart-4: #F87171;
+  --chart-5: var(--ea-accent);
+  --sidebar: var(--ea-surface-glass);
+  --sidebar-foreground: var(--ea-text-1);
+  --sidebar-primary: var(--ea-interactive);
+  --sidebar-primary-foreground: var(--ea-bg);
+  --sidebar-accent: var(--ea-hover-subtle);
+  --sidebar-accent-foreground: var(--ea-text-1);
+  --sidebar-border: var(--ea-border);
+  --sidebar-ring: var(--ea-interactive);
+}

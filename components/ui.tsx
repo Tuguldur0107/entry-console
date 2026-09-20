@@ -37,7 +37,10 @@ const STATUS_TONE: Record<CustomerStatus, string> = {
   rejected: "badge-muted",
 };
 
-export const fmtMnt = (v: string | number) => `${new Intl.NumberFormat("en-US").format(Math.round(Number(v)))} ₮`;
+// Тэмдэг нь тооноосоо ТАСРАХГҮЙ — нарийн баганад "100,000" / "₮" гэж хоёр мөр
+// болохгүйн тулд ЗАЙГҮЙ ЗАЙ (U+00A0).
+export const fmtMnt = (v: string | number) =>
+  `${new Intl.NumberFormat("en-US").format(Math.round(Number(v)))}\u00A0₮`;
 
 export function fmtDate(iso: string | Date | null, withTime = true): string {
   if (!iso) return "—";

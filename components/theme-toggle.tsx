@@ -10,6 +10,9 @@ function apply(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
   try {
     localStorage.setItem("entry-console-theme", theme);
+    // tokens.css-ийн харанхуй блок нь `.dark` КЛАСС-аар сонгогддог (Entry-тэй
+    // ижил). `data-theme` нь хуучин сонгогчдод хэвээр үлдэнэ.
+    document.documentElement.classList.toggle("dark", theme === "dark");
   } catch {
     /* private mode */
   }
@@ -42,4 +45,4 @@ export function ThemeToggle() {
 }
 
 /** Hydration-ээс ӨМНӨ ажиллах inline script — theme анивчихгүй. */
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("entry-console-theme");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("entry-console-theme");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t);if(t==="dark"){document.documentElement.classList.add("dark")}}catch(e){}})();`;
