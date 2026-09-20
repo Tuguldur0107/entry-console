@@ -3,11 +3,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MAX_PLAN_PRICE_MNT,
   describeSaasDeadline,
   describeSaasSeats,
   filterSaasRows,
   formatOverrides,
+  parsePlanPricesForm,
+  parsePriceField,
   parseSaasSubscriptionForm,
+  summarizeRevenue,
   summarizeSaasRows,
   type SaasSubscriptionRow,
 } from "../lib/saas-subscriptions";
@@ -24,6 +28,9 @@ function row(patch: Partial<SaasSubscriptionRow> = {}): SaasSubscriptionRow {
     status: "active",
     seats: 2,
     seatsUsed: 2,
+    pricePerSeatMnt: 100_000,
+    pricePerSeatOverrideMnt: null,
+    monthlyAmountMnt: 200_000,
     writable: true,
     readOnlyReason: null,
     daysLeft: null,
@@ -99,6 +106,7 @@ test("parseSaasSubscriptionForm: зөв оролт", () => {
     planId: "platform",
     status: "active",
     seats: 5,
+    pricePerSeatMnt: null,
     trialEndsAt: null,
     currentPeriodEnd: "2026-12-31",
     overrides: { features: { "api.rest": true } },
@@ -138,4 +146,68 @@ test("formatOverrides", () => {
   assert.equal(formatOverrides(null), "");
   assert.equal(formatOverrides({}), "");
   assert.equal(formatOverrides({ limits: { seats: 3 } }), '{\n  "limits": {\n    "seats": 3\n  }\n}');
+});
+
+test("parsePriceField: хоосон → null, форматтай текст → тоо", () => {
+  assert.deepEqual(parsePriceField("", "Үнэ"), { ok: true, value: null });
+  assert.deepEqual(parsePriceField("  ", "Үнэ"), { ok: true, value: null });
+  assert.deepEqual(parsePriceField("0", "Үнэ"), { ok: true, value: 0 });
+  assert.deepEqual(parsePriceField(" 149,000 ₮ ", "Үнэ"), { ok: true, value: 149_000 });
+});
+
+test("parsePriceField: гажиг оролт алдаа буцаана", () => {
+  for (const bad of ["-1", "100.5", "үнэгүй", String(MAX_PLAN_PRICE_MNT + 1)]) {
+    const parsed = parsePriceField(bad, "Үнэ");
+    assert.ok(!parsed.ok, `${bad} нь алдаа өгөх ёстой`);
+    assert.match(parsed.error, /Үнэ/);
+  }
+});
+
+test("parsePlanPricesForm: багц бүрийн мөр гарна, хоосон нь null", () => {
+  const parsed = parsePlanPricesForm({
+    price_trial: "0",
+    price_standard: "149000",
+    price_platform: "199,000",
+    price_enterprise: "",
+    price_dedicated: "20000",
+  });
+  assert.ok(parsed.ok);
+  assert.deepEqual(parsed.prices, [
+    { planId: "trial", pricePerSeatMnt: 0 },
+    { planId: "standard", pricePerSeatMnt: 149_000 },
+    { planId: "platform", pricePerSeatMnt: 199_000 },
+    { planId: "enterprise", pricePerSeatMnt: null },
+    { planId: "dedicated", pricePerSeatMnt: 20_000 },
+  ]);
+});
+
+test("parsePlanPricesForm: нэг талбар буруу бол БҮХЭЛДЭЭ татгалзана", () => {
+  const parsed = parsePlanPricesForm({ price_standard: "-5" });
+  assert.ok(!parsed.ok);
+  assert.match(parsed.error, /Standard/);
+});
+
+test("parseSaasSubscriptionForm: тусгай үнэ", () => {
+  const base = { organization_id: "o", plan_id: "standard", status: "active" };
+  const withPrice = parseSaasSubscriptionForm({ ...base, price_per_seat: "80,000" });
+  assert.ok(withPrice.ok);
+  assert.equal(withPrice.input.pricePerSeatMnt, 80_000);
+  const empty = parseSaasSubscriptionForm(base);
+  assert.ok(empty.ok);
+  assert.equal(empty.input.pricePerSeatMnt, null);
+  const bad = parseSaasSubscriptionForm({ ...base, price_per_seat: "үнэгүй" });
+  assert.ok(!bad.ok);
+  assert.match(bad.error, /Тусгай үнэ/);
+});
+
+test("summarizeRevenue: зөвхөн идэвхтэй/хоцорсон, дүн зохиохгүй", () => {
+  const revenue = summarizeRevenue([
+    row({ status: "active", monthlyAmountMnt: 200_000 }),
+    row({ organizationId: "2", status: "past_due", monthlyAmountMnt: 100_000 }),
+    row({ organizationId: "3", status: "active", monthlyAmountMnt: null }),
+    row({ organizationId: "4", status: "trialing", monthlyAmountMnt: 999_999 }),
+    row({ organizationId: "5", status: "cancelled", monthlyAmountMnt: 500_000 }),
+  ]);
+  assert.deepEqual(revenue, { mrrMnt: 300_000, billable: 2, unknown: 1 });
+  assert.deepEqual(summarizeRevenue([]), { mrrMnt: 0, billable: 0, unknown: 0 });
 });

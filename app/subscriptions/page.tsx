@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { EmptyState, Kpi, PageHeader, Section } from "@/components/ui";
+import { EmptyState, Kpi, PageHeader, Section, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { listSaasSubscriptions, saasApiConfigured, SaasApiError } from "@/lib/saas-api";
 import {
@@ -11,6 +11,7 @@ import {
   SAAS_STATUS_BADGE,
   SAAS_STATUS_LABELS,
   SAAS_STATUSES,
+  summarizeRevenue,
   summarizeSaasRows,
   type SaasSubscriptionRow,
 } from "@/lib/saas-subscriptions";
@@ -47,6 +48,7 @@ export default async function SubscriptionsPage({
     }
   }
   const summary = summarizeSaasRows(rows);
+  const revenue = summarizeRevenue(rows);
   const visible = filterSaasRows(rows, { status, q });
 
   return (
@@ -54,7 +56,9 @@ export default async function SubscriptionsPage({
       <PageHeader
         title="SaaS багцууд"
         sub="Үндсэн SaaS сервис дээрх байгууллага бүрийн багц, статус, суудал, хугацаа — өөрчлөлт нь тэр даруй апп-д үйлчилнэ (бичих эрх, боломж, суудлын лимит)."
-      />
+      >
+        <Link href="/subscriptions/pricing" className="btn btn-sm">Багцын үнэ</Link>
+      </PageHeader>
 
       {error ? (
         <div className="space-y-2">
@@ -63,11 +67,18 @@ export default async function SubscriptionsPage({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Kpi label="Байгууллага" value={String(summary.total)} sub={`${summary.active} идэвхтэй · ${summary.trialing} туршилт`} />
         <Kpi label="Төлбөр хоцорсон" value={String(summary.pastDue)} sub={`${summary.suspended} түр зогсоосон`} tone={summary.pastDue ? "warning" : undefined} href="/subscriptions?status=past_due" />
         <Kpi label="Зөвхөн унших" value={String(summary.readOnly)} sub="бичих эрх хаагдсан" tone={summary.readOnly ? "danger" : undefined} href="/subscriptions?status=readonly" />
         <Kpi label="7 хоногт дуусах" value={String(summary.endingSoon)} sub={summary.overSeats ? `${summary.overSeats} суудал хэтэрсэн` : "trial / grace"} tone={summary.endingSoon || summary.overSeats ? "warning" : undefined} />
+        <Kpi
+          label="Сарын орлого (MRR)"
+          value={fmtMnt(revenue.mrrMnt)}
+          sub={`${revenue.billable} төлбөртэй${revenue.unknown ? ` · ${revenue.unknown} дүн тодорхойгүй` : ""}`}
+          tone={revenue.unknown ? "warning" : undefined}
+          href="/subscriptions/pricing"
+        />
       </div>
 
       <Section
@@ -107,6 +118,7 @@ export default async function SubscriptionsPage({
                   <th>Багц</th>
                   <th>Статус</th>
                   <th>Суудал</th>
+                  <th>Үнэ / сарын дүн</th>
                   <th>Хугацаа</th>
                   <th>Trial дуусах</th>
                   <th>Үе дуусах</th>
@@ -130,6 +142,21 @@ export default async function SubscriptionsPage({
                       <td>{SAAS_PLAN_LABELS[row.planId] ?? row.planId}</td>
                       <td><span className={`badge ${SAAS_STATUS_BADGE[row.status] ?? "badge-muted"}`}>{SAAS_STATUS_LABELS[row.status] ?? row.status}</span></td>
                       <td className={seats.over ? "text-danger font-medium" : ""}>{seats.text}</td>
+                      <td>
+                        {row.pricePerSeatMnt === null ? (
+                          <span className="text-text-3">хэлэлцээрээр</span>
+                        ) : (
+                          <>
+                            {fmtMnt(row.pricePerSeatMnt)}
+                            {row.pricePerSeatOverrideMnt !== null ? (
+                              <span className="ml-1 text-xs text-warning">тусгай</span>
+                            ) : null}
+                          </>
+                        )}
+                        <div className="text-xs text-text-3">
+                          {row.monthlyAmountMnt === null ? "сарын дүн —" : `${fmtMnt(row.monthlyAmountMnt)} / сар`}
+                        </div>
+                      </td>
                       <td className={deadline.tone === "danger" ? "text-danger" : deadline.tone === "warning" ? "text-warning" : "text-text-2"}>{deadline.text}</td>
                       <td className="mono text-text-2">{row.trialEndsAt ?? "—"}</td>
                       <td className="mono text-text-2">{row.currentPeriodEnd ?? "—"}</td>

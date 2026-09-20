@@ -20,6 +20,12 @@ export type SaasSubscriptionRow = {
   /** null = багцын default суудал */
   seats: number | null;
   seatsUsed: number;
+  /** Бодит суудлын үнэ: тусгай үнэ → багцын үнэ (null = хэлэлцээрээр). */
+  pricePerSeatMnt: number | null;
+  /** ЗӨВХӨН энэ байгууллагад тогтоосон тусгай үнэ (null = багцын үнэ дагана). */
+  pricePerSeatOverrideMnt: number | null;
+  /** Төлсөн суудал × үнэ; аль нэг нь тодорхойгүй бол null. */
+  monthlyAmountMnt: number | null;
   writable: boolean;
   readOnlyReason: string | null;
   daysLeft: number | null;
@@ -38,11 +44,15 @@ export type SaasSubscriptionInput = {
   planId: SaasPlanId;
   status: SaasSubscriptionStatus;
   seats: number | null;
+  pricePerSeatMnt: number | null;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
   overrides: unknown;
   note: string | null;
 };
+
+/** core: GET /api/platform/plan-prices — багц бүрийн ₮/суудал/сар (null = хэлэлцээрээр). */
+export type SaasPlanPrices = Partial<Record<SaasPlanId, number | null>>;
 
 export const SAAS_PLAN_LABELS: Record<SaasPlanId, string> = {
   trial: "Туршилт",
@@ -83,6 +93,61 @@ export function isSaasStatus(value: unknown): value is SaasSubscriptionStatus {
 
 /** Жагсаалтын шүүлтүүр: `status` = статус эсвэл "readonly" эсвэл "" (бүгд); `q` = нэр/ТТД/и-мэйл. */
 export type SaasListFilter = { status?: string; q?: string };
+
+/** Үнэ тохируулж болох багцууд — trial нь үргэлж 0₮ тул жагсаалтад ОРНО (хөнгөлөлттэй туршилт). */
+export const SAAS_PRICEABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise", "dedicated"];
+
+/** Үнийн талбар → ₮ бүхэл тоо; хоосон → null (хэлэлцээрээр). core-ийн дүрэмтэй ИЖИЛ. */
+export const MAX_PLAN_PRICE_MNT = 100_000_000;
+
+export function parsePriceField(
+  raw: string,
+  label: string
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  const text = (raw ?? "").replace(/[\s,₮]/g, "");
+  if (!text) return { ok: true, value: null };
+  if (!/^\d+$/.test(text)) return { ok: false, error: `${label}: сөрөг биш бүхэл тоо (₮) байна` };
+  const value = Number(text);
+  if (value > MAX_PLAN_PRICE_MNT)
+    return { ok: false, error: `${label}: хэт их — дээд тал нь ${MAX_PLAN_PRICE_MNT.toLocaleString("en-US")}₮` };
+  return { ok: true, value };
+}
+
+/** Багцын үнийн формыг API-ийн мөр болгоно (планы түлхүүр → талбарын утга). */
+export function parsePlanPricesForm(
+  fields: Record<string, string>
+): { ok: true; prices: { planId: SaasPlanId; pricePerSeatMnt: number | null }[] } | { ok: false; error: string } {
+  const prices: { planId: SaasPlanId; pricePerSeatMnt: number | null }[] = [];
+  for (const planId of SAAS_PRICEABLE_PLANS) {
+    const parsed = parsePriceField(fields[`price_${planId}`] ?? "", `${SAAS_PLAN_LABELS[planId]} багц`);
+    if (!parsed.ok) return parsed;
+    prices.push({ planId, pricePerSeatMnt: parsed.value });
+  }
+  return { ok: true, prices };
+}
+
+export type SaasRevenue = {
+  /** Төлбөр хүлээгдэж буй (идэвхтэй + хоцорсон) байгууллагын сарын нийлбэр. */
+  mrrMnt: number;
+  /** Нийлбэрт орсон байгууллагын тоо. */
+  billable: number;
+  /** Дүн нь ТОДОРХОЙГҮЙ (үнэ эсвэл суудал дутуу) — нийлбэрт ОРООГҮЙ. */
+  unknown: number;
+};
+
+/** MRR — үнэ ЗОХИОХГҮЙ: суудал эсвэл үнэ дутуу бол нийлбэрт оруулахгүй, ИЛ тоолно. */
+export function summarizeRevenue(rows: SaasSubscriptionRow[]): SaasRevenue {
+  const revenue: SaasRevenue = { mrrMnt: 0, billable: 0, unknown: 0 };
+  for (const row of rows) {
+    if (row.status !== "active" && row.status !== "past_due") continue;
+    if (row.monthlyAmountMnt === null) revenue.unknown++;
+    else {
+      revenue.mrrMnt += row.monthlyAmountMnt;
+      revenue.billable++;
+    }
+  }
+  return revenue;
+}
 
 export function filterSaasRows(rows: SaasSubscriptionRow[], filter: SaasListFilter): SaasSubscriptionRow[] {
   const q = (filter.q ?? "").trim().toLowerCase();
@@ -163,6 +228,9 @@ export function parseSaasSubscriptionForm(fields: Record<string, string>): { ok:
     if (!/^\d+$/.test(seatsRaw) || Number(seatsRaw) < 1) return { ok: false, error: "Суудал 1-ээс доошгүй бүхэл тоо (хоосон = багцын default)" };
     seats = Number(seatsRaw);
   }
+  const price = parsePriceField(get("price_per_seat"), "Тусгай үнэ");
+  if (!price.ok) return price;
+
   const dateField = (key: string, label: string): { ok: true; value: string | null } | { ok: false; error: string } => {
     const raw = get(key);
     if (!raw) return { ok: true, value: null };
@@ -195,7 +263,11 @@ export function parseSaasSubscriptionForm(fields: Record<string, string>): { ok:
   const note = get("note") || null;
   return {
     ok: true,
-    input: { organizationId, planId, status, seats, trialEndsAt: trial.value, currentPeriodEnd: period.value, overrides, note },
+    input: {
+      organizationId, planId, status, seats,
+      pricePerSeatMnt: price.value,
+      trialEndsAt: trial.value, currentPeriodEnd: period.value, overrides, note,
+    },
   };
 }
 
