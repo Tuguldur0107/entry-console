@@ -18,6 +18,7 @@ Entry Accounting-ийн **харилцагчдыг** удирдах самбар
 | Sync | Харилцагчийн `upstream-sync.yml` dispatch (ref = tag) → PR |
 | Шинэчлэлт авах эрх (захиалгын гарц) | Харилцагч бүрд ТУСДАА: core repo дээр read-only deploy key + тэдний repo-д `UPSTREAM_SSH_KEY` secret (`lib/upstream-access.ts`). Repo бэлэн болоход автоматаар олгогдоно; «Эрх цуцлах» дарахад core дээрх ТЭР НЭГ түлхүүр устна — бусад харилцагч хөндөгдөхгүй, тухайн харилцагчийн байгаа код/deploy хэвээр, зөвхөн шинэ хувилбар ирэхээ болино. REST: `PATCH /api/customers/<slug> {"upstreamAccess":false,"reason":"…"}` |
 | Эрх | Collaborator урих (Read/Write/Admin), хүлээгдэж буй урилга |
+| SaaS багцууд | Үндсэн SaaS сервис (entry-accounting, `ENTRY_DEPLOYMENT_MODE=saas`) дээрх байгууллага бүрийн багц / статус / суудал / trial · grace хугацаа / overrides — `/subscriptions`. Core-ийн `GET/PUT /api/platform/subscriptions` (Bearer `ENTRY_SAAS_API_KEY` = core-ийн `ENTRY_PLATFORM_API_KEY`, `ENTRY_SAAS_API_URL`); апп дотор platform admin UI байхгүй — багцыг ЗӨВХӨН энд удирдана, өөрчлөлт тэр даруй үйлчилнэ. Тусдаа сервисийн харилцагч (dedicated) энд ОРОХГҮЙ — тэднийг лицензээр удирдана |
 
 ## Ажиллуулах
 
