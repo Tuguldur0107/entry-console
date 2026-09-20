@@ -13,10 +13,13 @@ import {
   isIsoDate,
   parsePlanPricePeriodForm,
   periodStatus,
+  byOrgName,
+  rowsWithSpecialPrice,
   parsePriceField,
   parseSaasSubscriptionForm,
   summarizeRevenue,
   summarizeSaasRows,
+  withSeatPrice,
   type SaasPlanPricePeriod,
   type SaasSubscriptionRow,
 } from "../lib/saas-subscriptions";
@@ -280,4 +283,48 @@ test("summarizeRevenue: зөвхөн идэвхтэй/хоцорсон, дүн �
   ]);
   assert.deepEqual(revenue, { mrrMnt: 300_000, billable: 2, unknown: 1 });
   assert.deepEqual(summarizeRevenue([]), { mrrMnt: 0, billable: 0, unknown: 0 });
+});
+
+test("rowsWithSpecialPrice: зөвхөн тусгай үнэтэй, нэрээр эрэмбэлнэ", () => {
+  const rows = [
+    row({ organizationId: "1", orgName: "Ямаа ХХК", pricePerSeatOverrideMnt: 80_000 }),
+    row({ organizationId: "2", orgName: "Адуу ХХК", pricePerSeatOverrideMnt: null }),
+    row({ organizationId: "3", orgName: "Бух ХХК", pricePerSeatOverrideMnt: 0 }),
+  ];
+  const special = rowsWithSpecialPrice(rows);
+  assert.deepEqual(special.map((r) => r.orgName), ["Бух ХХК", "Ямаа ХХК"]);
+});
+
+test("withSeatPrice: зөвхөн үнэ солигдож, бусад талбар ХЭВЭЭР", () => {
+  const source = row({
+    organizationId: "org-9",
+    planId: "platform",
+    status: "past_due",
+    seats: 7,
+    pricePerSeatOverrideMnt: null,
+    trialEndsAt: "2026-05-01",
+    currentPeriodEnd: "2026-11-30",
+    overrides: { limits: { companies: 3 } },
+    note: "гэрээ 42",
+  });
+  assert.deepEqual(withSeatPrice(source, 55_000), {
+    organizationId: "org-9",
+    planId: "platform",
+    status: "past_due",
+    seats: 7,
+    pricePerSeatMnt: 55_000,
+    trialEndsAt: "2026-05-01",
+    currentPeriodEnd: "2026-11-30",
+    overrides: { limits: { companies: 3 } },
+    note: "гэрээ 42",
+  });
+  // Цэвэрлэхэд ч бусад талбар хөндөгдөхгүй
+  assert.equal(withSeatPrice(source, null).pricePerSeatMnt, null);
+  assert.equal(withSeatPrice(source, null).note, "гэрээ 42");
+});
+
+test("byOrgName: локалаас ХАМААРАХГҮЙ тогтвортой эрэмбэ", () => {
+  const names = ["Ямаа", "Адуу", "Бух", "Адуу"].map((orgName) => ({ orgName }));
+  assert.deepEqual([...names].sort(byOrgName).map((n) => n.orgName), ["Адуу", "Адуу", "Бух", "Ямаа"]);
+  assert.equal(byOrgName({ orgName: "А" }, { orgName: "А" }), 0);
 });

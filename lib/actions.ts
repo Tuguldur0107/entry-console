@@ -22,8 +22,9 @@ import {
   deletePlanPricePeriod,
   SaasApiError,
   saveSaasSubscription,
+  setOrgSeatPrice,
 } from "./saas-api";
-import { parsePlanPricePeriodForm, parseSaasSubscriptionForm } from "./saas-subscriptions";
+import { parsePlanPricePeriodForm, parsePriceField, parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
@@ -680,6 +681,30 @@ export async function deletePlanPriceAction(id: string): Promise<ActionResult> {
     revalidatePath("/subscriptions/pricing");
     revalidatePath("/subscriptions");
     return { ok: true, message: `Устгалаа — ${removed}` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Байгууллагын ТУСГАЙ ҮНЭ — үнийн хуудаснаас (хоосон = багцын үнэ дагана). */
+export async function saveOrgPriceAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const organizationId = text(formData, "organization_id");
+  if (!organizationId) return { ok: false, error: "Байгууллага сонгоогүй байна" };
+  const price = parsePriceField(text(formData, "org_price"), "Тусгай үнэ");
+  if (!price.ok) return price;
+  try {
+    const { orgName } = await setOrgSeatPrice(organizationId, price.value, "console");
+    revalidatePath("/subscriptions/pricing");
+    revalidatePath("/subscriptions");
+    revalidatePath(`/subscriptions/${organizationId}`);
+    return {
+      ok: true,
+      message:
+        price.value === null
+          ? `${orgName}: тусгай үнэ цэвэрлэгдэж багцын үнэ дагана`
+          : `${orgName}: тусгай үнэ ${price.value.toLocaleString("en-US")}₮ боллоо`,
+    };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

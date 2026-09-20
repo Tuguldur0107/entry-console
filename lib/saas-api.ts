@@ -3,6 +3,7 @@
 // Core талд зөвхөн saas горимд нээлттэй (dedicated deploy → 404).
 
 import { config } from "./config";
+import { withSeatPrice } from "./saas-subscriptions";
 import type {
   SaasPlanPriceInput,
   SaasPlanPricePeriod,
@@ -76,6 +77,24 @@ export async function getSaasSubscription(organizationId: string): Promise<SaasS
 
 export async function saveSaasSubscription(input: SaasSubscriptionInput, actor: string): Promise<{ organizationId: string; orgName: string }> {
   return call<{ organizationId: string; orgName: string }>(SUBSCRIPTIONS, "PUT", { ...input, actor });
+}
+
+/**
+ * Зөвхөн ТУСГАЙ ҮНИЙГ солино (үнийн хуудаснаас).
+ * core-ийн PUT нь мөрийг бүтнээр солидог тул эхлээд одоогийн мөрийг уншиж,
+ * бусад талбарыг хэвээр буцаана. Console нэг админтай тул read-modify-write
+ * хангалттай — зэрэгцээ засварын уралдаан бодит эрсдэл биш.
+ */
+export async function setOrgSeatPrice(
+  organizationId: string,
+  pricePerSeatMnt: number | null,
+  actor: string
+): Promise<{ orgName: string }> {
+  const rows = await listSaasSubscriptions();
+  const row = rows.find((candidate) => candidate.organizationId === organizationId);
+  if (!row) throw new SaasApiError("Байгууллага олдсонгүй");
+  const saved = await saveSaasSubscription(withSeatPrice(row, pricePerSeatMnt), actor);
+  return { orgName: saved.orgName || row.orgName };
 }
 
 export type PlanPricesResult = {
