@@ -51,8 +51,28 @@ export type SaasSubscriptionInput = {
   note: string | null;
 };
 
-/** core: GET /api/platform/plan-prices — багц бүрийн ₮/суудал/сар (null = хэлэлцээрээр). */
+/** core: GET /api/platform/plan-prices — тухайн өдөр үйлчлэх ₮/суудал/сар (null = хэлэлцээрээр). */
 export type SaasPlanPrices = Partial<Record<SaasPlanId, number | null>>;
+
+/** Үнийн нэг ҮЕ. `effectiveTo` нь ХАМРУУЛСАН; null = хугацаагүй. */
+export type SaasPlanPricePeriod = {
+  id: string;
+  planId: SaasPlanId;
+  pricePerSeatMnt: number | null;
+  /** YYYY-MM-DD */
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  note: string | null;
+};
+
+/** Шинэ үе нэмэх оролт (core: POST /api/platform/plan-prices). */
+export type SaasPlanPriceInput = {
+  planId: SaasPlanId;
+  pricePerSeatMnt: number | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  note: string | null;
+};
 
 export const SAAS_PLAN_LABELS: Record<SaasPlanId, string> = {
   trial: "Туршилт",
@@ -113,18 +133,6 @@ export function parsePriceField(
   return { ok: true, value };
 }
 
-/** Багцын үнийн формыг API-ийн мөр болгоно (планы түлхүүр → талбарын утга). */
-export function parsePlanPricesForm(
-  fields: Record<string, string>
-): { ok: true; prices: { planId: SaasPlanId; pricePerSeatMnt: number | null }[] } | { ok: false; error: string } {
-  const prices: { planId: SaasPlanId; pricePerSeatMnt: number | null }[] = [];
-  for (const planId of SAAS_PRICEABLE_PLANS) {
-    const parsed = parsePriceField(fields[`price_${planId}`] ?? "", `${SAAS_PLAN_LABELS[planId]} багц`);
-    if (!parsed.ok) return parsed;
-    prices.push({ planId, pricePerSeatMnt: parsed.value });
-  }
-  return { ok: true, prices };
-}
 
 export type SaasRevenue = {
   /** Төлбөр хүлээгдэж буй (идэвхтэй + хоцорсон) байгууллагын сарын нийлбэр. */
@@ -274,4 +282,74 @@ export function parseSaasSubscriptionForm(fields: Record<string, string>): { ok:
 export function formatOverrides(value: unknown): string {
   if (!value || typeof value !== "object" || Object.keys(value as object).length === 0) return "";
   return JSON.stringify(value, null, 2);
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isIsoDate(value: string): boolean {
+  if (!ISO_DATE_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/** Шинэ үнийн үеийн форм → API оролт; алдаа МОНГОЛООР. */
+export function parsePlanPricePeriodForm(
+  fields: Record<string, string>
+): { ok: true; input: SaasPlanPriceInput } | { ok: false; error: string } {
+  const get = (key: string) => (fields[key] ?? "").trim();
+  const planId = get("plan_id");
+  if (!isSaasPlanId(planId) || !SAAS_PRICEABLE_PLANS.includes(planId))
+    return { ok: false, error: "Багц буруу байна" };
+  const price = parsePriceField(get("price"), "Үнэ");
+  if (!price.ok) return price;
+  const from = get("effective_from");
+  if (!isIsoDate(from)) return { ok: false, error: "Эхлэх огноо: YYYY-MM-DD" };
+  const toRaw = get("effective_to");
+  if (toRaw && !isIsoDate(toRaw)) return { ok: false, error: "Дуусах огноо: YYYY-MM-DD (хоосон = хугацаагүй)" };
+  if (toRaw && toRaw < from) return { ok: false, error: "Дуусах огноо эхлэх огнооноос өмнө байна" };
+  return {
+    ok: true,
+    input: {
+      planId,
+      pricePerSeatMnt: price.value,
+      effectiveFrom: from,
+      effectiveTo: toRaw || null,
+      note: get("note") || null,
+    },
+  };
+}
+
+/** Тухайн өдөр үйлчилж буй үе (байхгүй бол null → кодын default мөрдөнө). */
+export function currentPeriod(
+  periods: SaasPlanPricePeriod[],
+  planId: SaasPlanId,
+  today: string
+): SaasPlanPricePeriod | null {
+  const matches = periods.filter(
+    (period) => period.planId === planId && period.effectiveFrom <= today && today <= (period.effectiveTo ?? "9999-12-31")
+  );
+  if (matches.length === 0) return null;
+  return [...matches].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))[matches.length - 1];
+}
+
+/** Багц → үеүүд, огнооны дарааллаар (түүхийн хүснэгтэд). */
+export function groupPeriodsByPlan(
+  periods: SaasPlanPricePeriod[]
+): { planId: SaasPlanId; periods: SaasPlanPricePeriod[] }[] {
+  return SAAS_PRICEABLE_PLANS.map((planId) => ({
+    planId,
+    periods: periods
+      .filter((period) => period.planId === planId)
+      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)),
+  })).filter((group) => group.periods.length > 0);
+}
+
+/** Үеийн төлөв — UI-ийн шошго. */
+export function periodStatus(
+  period: SaasPlanPricePeriod,
+  today: string
+): { label: string; cls: string } {
+  if (period.effectiveFrom > today) return { label: "Ирээдүйд", cls: "badge-info" };
+  if (period.effectiveTo !== null && period.effectiveTo < today) return { label: "Дууссан", cls: "badge-muted" };
+  return { label: "Мөрдөж буй", cls: "badge-success" };
 }

@@ -8,11 +8,16 @@ import {
   describeSaasSeats,
   filterSaasRows,
   formatOverrides,
-  parsePlanPricesForm,
+  currentPeriod,
+  groupPeriodsByPlan,
+  isIsoDate,
+  parsePlanPricePeriodForm,
+  periodStatus,
   parsePriceField,
   parseSaasSubscriptionForm,
   summarizeRevenue,
   summarizeSaasRows,
+  type SaasPlanPricePeriod,
   type SaasSubscriptionRow,
 } from "../lib/saas-subscriptions";
 
@@ -163,28 +168,93 @@ test("parsePriceField: гажиг оролт алдаа буцаана", () => {
   }
 });
 
-test("parsePlanPricesForm: багц бүрийн мөр гарна, хоосон нь null", () => {
-  const parsed = parsePlanPricesForm({
-    price_trial: "0",
-    price_standard: "149000",
-    price_platform: "199,000",
-    price_enterprise: "",
-    price_dedicated: "20000",
-  });
-  assert.ok(parsed.ok);
-  assert.deepEqual(parsed.prices, [
-    { planId: "trial", pricePerSeatMnt: 0 },
-    { planId: "standard", pricePerSeatMnt: 149_000 },
-    { planId: "platform", pricePerSeatMnt: 199_000 },
-    { planId: "enterprise", pricePerSeatMnt: null },
-    { planId: "dedicated", pricePerSeatMnt: 20_000 },
-  ]);
+function pricePeriod(patch: Partial<SaasPlanPricePeriod> & { id: string }): SaasPlanPricePeriod {
+  return {
+    planId: "standard",
+    pricePerSeatMnt: 100_000,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    note: null,
+    ...patch,
+  };
+}
+
+test("isIsoDate: бодит огноог л зөвшөөрнө", () => {
+  assert.ok(isIsoDate("2026-02-28"));
+  assert.ok(!isIsoDate("2026-02-30"));
+  assert.ok(!isIsoDate("2026-1-1"));
 });
 
-test("parsePlanPricesForm: нэг талбар буруу бол БҮХЭЛДЭЭ татгалзана", () => {
-  const parsed = parsePlanPricesForm({ price_standard: "-5" });
-  assert.ok(!parsed.ok);
-  assert.match(parsed.error, /Standard/);
+test("parsePlanPricePeriodForm: бүрэн оролт", () => {
+  const parsed = parsePlanPricePeriodForm({
+    plan_id: "standard",
+    price: " 149,000 ₮ ",
+    effective_from: "2026-07-01",
+    effective_to: "2026-12-31",
+    note: "  хагас жилийн тариф ",
+  });
+  assert.ok(parsed.ok);
+  assert.deepEqual(parsed.input, {
+    planId: "standard",
+    pricePerSeatMnt: 149_000,
+    effectiveFrom: "2026-07-01",
+    effectiveTo: "2026-12-31",
+    note: "хагас жилийн тариф",
+  });
+});
+
+test("parsePlanPricePeriodForm: хоосон дуусах = хугацаагүй, хоосон үнэ = хэлэлцээрээр", () => {
+  const parsed = parsePlanPricePeriodForm({ plan_id: "enterprise", price: "", effective_from: "2026-01-01" });
+  assert.ok(parsed.ok);
+  assert.equal(parsed.input.effectiveTo, null);
+  assert.equal(parsed.input.pricePerSeatMnt, null);
+  assert.equal(parsed.input.note, null);
+});
+
+test("parsePlanPricePeriodForm: алдаанууд", () => {
+  const err = (fields: Record<string, string>) => {
+    const parsed = parsePlanPricePeriodForm(fields);
+    assert.ok(!parsed.ok);
+    return parsed.error;
+  };
+  const base = { plan_id: "standard", price: "100000", effective_from: "2026-01-01" };
+  assert.match(err({ ...base, plan_id: "gold" }), /Багц буруу/);
+  assert.match(err({ ...base, price: "-5" }), /Үнэ/);
+  assert.match(err({ ...base, effective_from: "" }), /Эхлэх огноо/);
+  assert.match(err({ ...base, effective_from: "2026-02-30" }), /Эхлэх огноо/);
+  assert.match(err({ ...base, effective_to: "тодорхойгүй" }), /Дуусах огноо/);
+  assert.match(err({ ...base, effective_from: "2026-07-01", effective_to: "2026-06-30" }), /өмнө байна/);
+});
+
+test("currentPeriod: хил ХАМРУУЛСАН, хамрахгүй бол null", () => {
+  const periods = [
+    pricePeriod({ id: "a", pricePerSeatMnt: 80_000, effectiveFrom: "2026-01-01", effectiveTo: "2026-06-30" }),
+    pricePeriod({ id: "b", pricePerSeatMnt: 120_000, effectiveFrom: "2026-07-01" }),
+  ];
+  assert.equal(currentPeriod(periods, "standard", "2026-06-30")?.id, "a");
+  assert.equal(currentPeriod(periods, "standard", "2026-07-01")?.id, "b");
+  assert.equal(currentPeriod(periods, "standard", "2025-12-31"), null);
+  assert.equal(currentPeriod(periods, "platform", "2026-07-01"), null);
+});
+
+test("periodStatus: ирээдүй / мөрдөж буй / дууссан", () => {
+  const today = "2026-07-15";
+  assert.equal(periodStatus(pricePeriod({ id: "a", effectiveFrom: "2027-01-01" }), today).label, "Ирээдүйд");
+  assert.equal(periodStatus(pricePeriod({ id: "b", effectiveFrom: "2026-01-01" }), today).label, "Мөрдөж буй");
+  assert.equal(
+    periodStatus(pricePeriod({ id: "c", effectiveFrom: "2026-01-01", effectiveTo: "2026-06-30" }), today).label,
+    "Дууссан"
+  );
+});
+
+test("groupPeriodsByPlan: багцаар бүлэглэж огноогоор эрэмбэлнэ, хоосон багц ОРОХГҮЙ", () => {
+  const groups = groupPeriodsByPlan([
+    pricePeriod({ id: "b", effectiveFrom: "2026-07-01" }),
+    pricePeriod({ id: "a", effectiveFrom: "2026-01-01" }),
+    pricePeriod({ id: "p", planId: "platform", effectiveFrom: "2026-01-01" }),
+  ]);
+  assert.deepEqual(groups.map((g) => g.planId), ["standard", "platform"]);
+  assert.deepEqual(groups[0].periods.map((p) => p.id), ["a", "b"]);
 });
 
 test("parseSaasSubscriptionForm: тусгай үнэ", () => {
