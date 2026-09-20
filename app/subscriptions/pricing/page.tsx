@@ -5,10 +5,15 @@ import {
   CurrentPricesTable,
   PlanPriceHistory,
 } from "@/components/plan-prices-form";
+import { OrgPriceSection } from "@/components/org-price-form";
 import { PageHeader, Section } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
-import { listPlanPrices, saasApiConfigured, SaasApiError } from "@/lib/saas-api";
-import type { SaasPlanPricePeriod, SaasPlanPrices } from "@/lib/saas-subscriptions";
+import { listPlanPrices, listSaasSubscriptions, saasApiConfigured, SaasApiError } from "@/lib/saas-api";
+import type {
+  SaasPlanPricePeriod,
+  SaasPlanPrices,
+  SaasSubscriptionRow,
+} from "@/lib/saas-subscriptions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Багцын үнэ" };
@@ -19,12 +24,16 @@ export default async function PlanPricingPage() {
   let prices: SaasPlanPrices = {};
   let defaults: SaasPlanPrices = {};
   let periods: SaasPlanPricePeriod[] = [];
+  let rows: SaasSubscriptionRow[] = [];
   let today = new Date().toISOString().slice(0, 10);
   let error: string | null = null;
   if (!saasApiConfigured()) error = "ENTRY_SAAS_API_URL / ENTRY_SAAS_API_KEY тохируулаагүй.";
   else {
     try {
-      ({ prices, defaults, periods, today } = await listPlanPrices());
+      [{ prices, defaults, periods, today }, rows] = await Promise.all([
+        listPlanPrices(),
+        listSaasSubscriptions(),
+      ]);
     } catch (caught) {
       error = caught instanceof SaasApiError || caught instanceof Error ? caught.message : String(caught);
     }
@@ -61,6 +70,13 @@ export default async function PlanPricingPage() {
             sub="Хэзээнээс мөрдөхийг заана. Хугацаагүй үнэ дээр шинэ үнэ хожуу эхлэвэл өмнөх нь автоматаар өмнөх өдрөөр хаагдана."
           >
             <AddPlanPriceForm today={today} />
+          </Section>
+
+          <Section
+            title="Харилцагчийн тусгай үнэ"
+            sub="Багцын үнийг ДАРНА. Хоосон үлдээвэл тухайн байгууллага багцынхаа үнээр тооцогдоно."
+          >
+            <OrgPriceSection rows={rows} />
           </Section>
 
           <Section title="Үнийн түүх" sub="Анх тогтоосон үнэ, дараагийн шинэчлэлт, ирээдүйн үнэ бүгд энд.">

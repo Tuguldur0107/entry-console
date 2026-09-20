@@ -353,3 +353,37 @@ export function periodStatus(
   if (period.effectiveTo !== null && period.effectiveTo < today) return { label: "Дууссан", cls: "badge-muted" };
   return { label: "Мөрдөж буй", cls: "badge-success" };
 }
+
+/**
+ * Нэрээр эрэмбэлэх — `localeCompare` ЭСЭРГҮҮЦНЭ: Node ба браузерын ICU өөр
+ * дараалал өгч болзошгүй тул сервер/клиентийн HTML зөрж hydration унадаг
+ * (React #418). Код цэгийн харьцуулалт хаана ч ИЖИЛ.
+ */
+export function byOrgName(a: { orgName: string }, b: { orgName: string }): number {
+  if (a.orgName === b.orgName) return 0;
+  return a.orgName < b.orgName ? -1 : 1;
+}
+
+/** Тусгай үнэ ТОГТООСОН байгууллагууд — үнийн хуудсанд. */
+export function rowsWithSpecialPrice(rows: SaasSubscriptionRow[]): SaasSubscriptionRow[] {
+  return rows.filter((row) => row.pricePerSeatOverrideMnt !== null).sort(byOrgName);
+}
+
+/**
+ * Байгууллагын ТУСГАЙ ҮНИЙГ л сольсон бүтэн мөр.
+ * core-ийн PUT нь мөрийг БҮТНЭЭР солидог тул бусад талбарыг хэвээр буцаана —
+ * эс бөгөөс суудал, хугацаа, тэмдэглэл цэвэрлэгдэнэ.
+ */
+export function withSeatPrice(row: SaasSubscriptionRow, pricePerSeatMnt: number | null): SaasSubscriptionInput {
+  return {
+    organizationId: row.organizationId,
+    planId: row.planId,
+    status: row.status,
+    seats: row.seats,
+    pricePerSeatMnt,
+    trialEndsAt: row.trialEndsAt,
+    currentPeriodEnd: row.currentPeriodEnd,
+    overrides: row.overrides ?? null,
+    note: row.note,
+  };
+}
