@@ -17,6 +17,8 @@ import { runMonitor } from "./monitor";
 import { bootstrapSyncWorkflow, grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
+import { SaasApiError, saveSaasSubscription } from "./saas-api";
+import { parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
@@ -40,7 +42,7 @@ import {
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 function errorText(error: unknown): string {
-  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError || error instanceof UpstreamAccessError) return error.message;
+  if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError || error instanceof UpstreamAccessError || error instanceof SaasApiError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -624,6 +626,24 @@ export async function cleanupOrphanVolumes(): Promise<ActionResult> {
     const n = await deleteOrphanVolumes(p, e);
     revalidatePath("/settings");
     return { ok: true, message: n ? `${n} салангид volume устгав` : "Салангид volume алга" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** SaaS харилцагчийн багц бичих — core-ийн /api/platform/subscriptions (PUT). */
+export async function saveSubscription(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const fields: Record<string, string> = {};
+  for (const key of ["organization_id", "plan_id", "status", "seats", "trial_ends_at", "current_period_end", "overrides", "note"])
+    fields[key] = text(formData, key);
+  const parsed = parseSaasSubscriptionForm(fields);
+  if (!parsed.ok) return parsed;
+  try {
+    const saved = await saveSaasSubscription(parsed.input, "console");
+    revalidatePath("/subscriptions");
+    revalidatePath(`/subscriptions/${saved.organizationId}`);
+    return { ok: true, message: `${saved.orgName}: багц хадгалагдлаа` };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

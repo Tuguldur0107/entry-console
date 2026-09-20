@@ -26,6 +26,12 @@ export const config = {
   baseDomain: (process.env.CUSTOMER_BASE_DOMAIN ?? "").trim().replace(/^\.+/, "") || null,
   telegram: process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID ? { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID } : null,
   alertWebhookUrl: process.env.ALERT_WEBHOOK_URL || null,
+  /** Үндсэн SaaS сервис (entry-accounting, saas горим) — багц удирдах платформын API */
+  get saas(): { apiUrl: string; apiKey: string } | null {
+    const apiUrl = (process.env.ENTRY_SAAS_API_URL ?? "").trim().replace(/\/+$/, "");
+    const apiKey = (process.env.ENTRY_SAAS_API_KEY ?? "").trim();
+    return apiUrl && apiKey ? { apiUrl, apiKey } : null;
+  },
   /** Console өөрөө Railway дээр — өөрийн service (хяналтын cron-д хэрэгтэй) */
   self: {
     projectId: process.env.RAILWAY_PROJECT_ID || null,
