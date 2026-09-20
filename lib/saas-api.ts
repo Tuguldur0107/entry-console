@@ -4,7 +4,8 @@
 
 import { config } from "./config";
 import type {
-  SaasPlanId,
+  SaasPlanPriceInput,
+  SaasPlanPricePeriod,
   SaasPlanPrices,
   SaasSubscriptionInput,
   SaasSubscriptionRow,
@@ -21,7 +22,7 @@ export function saasApiConfigured(): boolean {
   return !!config.saas;
 }
 
-async function call<T>(path: string, method: "GET" | "PUT", body?: unknown): Promise<T> {
+async function call<T>(path: string, method: "GET" | "PUT" | "POST" | "DELETE", body?: unknown): Promise<T> {
   const saas = config.saas;
   if (!saas) throw new SaasApiError("ENTRY_SAAS_API_URL / ENTRY_SAAS_API_KEY тохируулаагүй (.env.example)");
   let response: Response;
@@ -77,16 +78,45 @@ export async function saveSaasSubscription(input: SaasSubscriptionInput, actor: 
   return call<{ organizationId: string; orgName: string }>(SUBSCRIPTIONS, "PUT", { ...input, actor });
 }
 
-/** Багцын үнэ — бодит утга + кодын default (Console-д «default: …» гэж харуулна). */
-export async function listPlanPrices(): Promise<{ prices: SaasPlanPrices; defaults: SaasPlanPrices }> {
-  const result = await call<{ prices: SaasPlanPrices; defaults: SaasPlanPrices }>(PLAN_PRICES, "GET");
-  return { prices: result.prices ?? {}, defaults: result.defaults ?? {} };
+export type PlanPricesResult = {
+  periods: SaasPlanPricePeriod[];
+  prices: SaasPlanPrices;
+  defaults: SaasPlanPrices;
+  /** core-ийн Улаанбаатарын өнөөдөр (YYYY-MM-DD) — «мөрдөж буй» шошго үүгээр. */
+  today: string;
+};
+
+function normalize(result: Partial<PlanPricesResult>): PlanPricesResult {
+  return {
+    periods: Array.isArray(result.periods) ? result.periods : [],
+    prices: result.prices ?? {},
+    defaults: result.defaults ?? {},
+    today: result.today ?? new Date().toISOString().slice(0, 10),
+  };
 }
 
-export async function savePlanPrices(
-  prices: { planId: SaasPlanId; pricePerSeatMnt: number | null }[],
+/** Багцын үнийн ТҮҮХ + тухайн өдрийн бодит үнэ + кодын default. */
+export async function listPlanPrices(): Promise<PlanPricesResult> {
+  return normalize(await call<Partial<PlanPricesResult>>(PLAN_PRICES, "GET"));
+}
+
+/** Шинэ үнийн үе нэмэх; хугацаагүй өмнөх үе автоматаар хаагдвал `closed` ирнэ. */
+export async function addPlanPricePeriod(
+  input: SaasPlanPriceInput,
   actor: string
-): Promise<{ prices: SaasPlanPrices; changes: string[] }> {
-  const result = await call<{ prices: SaasPlanPrices; changes: string[] }>(PLAN_PRICES, "PUT", { prices, actor });
-  return { prices: result.prices ?? {}, changes: result.changes ?? [] };
+): Promise<PlanPricesResult & { closed: string | null; added: string }> {
+  const result = await call<Partial<PlanPricesResult> & { closed: string | null; added: string }>(
+    PLAN_PRICES,
+    "POST",
+    { ...input, actor }
+  );
+  return { ...normalize(result), closed: result.closed ?? null, added: result.added ?? "" };
+}
+
+export async function deletePlanPricePeriod(
+  id: string,
+  actor: string
+): Promise<PlanPricesResult & { removed: string }> {
+  const result = await call<Partial<PlanPricesResult> & { removed: string }>(PLAN_PRICES, "DELETE", { id, actor });
+  return { ...normalize(result), removed: result.removed ?? "" };
 }

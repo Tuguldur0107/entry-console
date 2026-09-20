@@ -44,9 +44,19 @@ export function Notice({ result }: { result: ActionResult | null }) {
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field({
+  label,
+  hint,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
+    <div className={className}>
       <span className="label">{label}</span>
       {children}
       {hint && <p className="hint">{hint}</p>}

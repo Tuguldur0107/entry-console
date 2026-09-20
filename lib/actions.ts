@@ -17,8 +17,13 @@ import { runMonitor } from "./monitor";
 import { bootstrapSyncWorkflow, grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
-import { SaasApiError, savePlanPrices, saveSaasSubscription } from "./saas-api";
-import { parsePlanPricesForm, parseSaasSubscriptionForm } from "./saas-subscriptions";
+import {
+  addPlanPricePeriod,
+  deletePlanPricePeriod,
+  SaasApiError,
+  saveSaasSubscription,
+} from "./saas-api";
+import { parsePlanPricePeriodForm, parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
@@ -649,22 +654,32 @@ export async function saveSubscription(_prev: ActionResult | null, formData: For
   }
 }
 
-/** SaaS багцын ҮНЭ бичих — core-ийн /api/platform/plan-prices (PUT). */
-export async function savePlanPricesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+/** Шинэ үнийн үе нэмэх — core-ийн POST /api/platform/plan-prices. */
+export async function addPlanPriceAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireSession();
   const fields: Record<string, string> = {};
-  for (const [key, value] of formData.entries())
-    if (key.startsWith("price_")) fields[key] = String(value ?? "").trim();
-  const parsed = parsePlanPricesForm(fields);
+  for (const key of ["plan_id", "price", "effective_from", "effective_to", "note"])
+    fields[key] = text(formData, key);
+  const parsed = parsePlanPricePeriodForm(fields);
   if (!parsed.ok) return parsed;
   try {
-    const { changes } = await savePlanPrices(parsed.prices, "console");
+    const { added, closed } = await addPlanPricePeriod(parsed.input, "console");
     revalidatePath("/subscriptions/pricing");
     revalidatePath("/subscriptions");
-    return {
-      ok: true,
-      message: changes.length === 0 ? "Өөрчлөлтгүй — үнэ хэвээр" : `Үнэ шинэчлэгдлээ · ${changes.join(" · ")}`,
-    };
+    return { ok: true, message: `Нэмэгдлээ — ${added}${closed ? ` · өмнөх үе хаагдав: ${closed}` : ""}` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Буруу оруулсан үнийн үеийг устгах. */
+export async function deletePlanPriceAction(id: string): Promise<ActionResult> {
+  await requireSession();
+  try {
+    const { removed } = await deletePlanPricePeriod(id, "console");
+    revalidatePath("/subscriptions/pricing");
+    revalidatePath("/subscriptions");
+    return { ok: true, message: `Устгалаа — ${removed}` };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
