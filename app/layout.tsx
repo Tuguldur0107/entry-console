@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import Link from "next/link";
 
 import { Icons } from "@/components/icons";
@@ -9,6 +10,12 @@ import { logout } from "@/lib/actions";
 import { config } from "@/lib/config";
 import "./globals.css";
 
+// Entry-тэй ИЖИЛ фонтууд; хувьсагчийн нэр ui-kit/tokens.css-ийн хүлээж буйтай
+// таарах ЁСТОЙ (--font-geist-sans / --font-geist-mono / --font-fraunces).
+const geist = Geist({ subsets: ["latin", "cyrillic"], variable: "--font-geist-sans" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
+
 export const metadata: Metadata = {
   title: { default: "Entry Console", template: "%s · Entry Console" },
   description: "Entry Accounting — харилцагчийн удирдлага",
@@ -17,11 +24,15 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const authed = await hasSession();
   return (
-    <html lang="mn" suppressHydrationWarning>
+    <html
+      lang="mn"
+      suppressHydrationWarning
+      className={`${geist.variable} ${geistMono.variable} ${fraunces.variable}`}
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-screen">
+      <body className="min-h-screen font-sans antialiased">
         {authed ? (
           <div className="flex min-h-screen">
             <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface px-3 py-4 md:flex">

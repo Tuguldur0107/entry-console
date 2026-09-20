@@ -1,57 +1,41 @@
 @import "tailwindcss";
 
-/* ── Дизайн токен: light (root) → dark (html[data-theme=dark]) ─────────── */
+/* Entry-ийн ДИЗАЙН ТОКЕНЫ ЦОРЫН ГАНЦ ЭХ СУРВАЛЖ — entry-accounting-ийн
+ * `ui-kit/tokens.css`-ийн ХУУЛБАР. Өнгө/радиус/сүүдэр өөрчлөх бол Entry дээр
+ * засаад энд дахин хуулна; энэ файлд hex бичихийг ХОРИГЛОНО.
+ * Light = Editorial Ivory, dark (`.dark`) = Cosmic Glass. */
+@import "../ui-kit/tokens.css";
+
+/* ── Console-ийн дотоод нэрс → Entry-ийн токен ─────────────────────────────
+ * Хуучин класс, Tailwind утилитууд (`text-text-3`, `bg-surface` …) хэвээр
+ * ажиллаж, өнгө нь Entry-ийнхээр солигдоно. */
 :root {
-  --bg: #f4f5f7;
-  --bg-2: #eceef2;
-  --surface: #ffffff;
-  --surface-2: #f9fafb;
-  --border: #e4e7ec;
-  --border-2: #d0d5dd;
-  --text-1: #101828;
-  --text-2: #475467;
-  --text-3: #98a2b3;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-fg: #ffffff;
-  --primary-soft: #e8efff;
-  --success: #15803d;
-  --success-bg: #e6f6ec;
-  --warning: #b45309;
-  --warning-bg: #fff4e0;
-  --danger: #b91c1c;
-  --danger-bg: #fdecec;
-  --info: #0e7490;
-  --info-bg: #e0f5f9;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
-  --ring: rgba(37, 99, 235, 0.35);
+  --bg: var(--ea-bg);
+  --bg-2: var(--ea-bg-2);
+  --surface: var(--ea-surface);
+  --surface-2: var(--ea-bg-2);
+  --border: var(--ea-border);
+  --border-2: var(--ea-border-strong);
+  --text-1: var(--ea-text-1);
+  --text-2: var(--ea-text-2);
+  --text-3: var(--ea-text-3);
+  --primary-hover: var(--ea-primary-700);
+  --primary-fg: var(--primary-foreground);
+  --primary-soft: var(--ea-selected-bg);
+  --success: var(--ea-success-fg);
+  --success-bg: var(--ea-success-bg);
+  --warning: var(--ea-warning-fg);
+  --warning-bg: var(--ea-warning-bg);
+  --danger: var(--ea-danger-fg);
+  --danger-bg: var(--ea-danger-bg);
+  --info: var(--ea-accent);
+  --info-bg: var(--ea-accent-bg);
+  --shadow: var(--ea-shadow-2);
+  --ring: var(--ea-focus);
   color-scheme: light;
 }
 
-html[data-theme="dark"] {
-  --bg: #0b0f17;
-  --bg-2: #0f141d;
-  --surface: #131a24;
-  --surface-2: #1a2230;
-  --border: #243040;
-  --border-2: #2f3c4f;
-  --text-1: #f2f4f7;
-  --text-2: #b7c0cd;
-  --text-3: #7c8799;
-  --primary: #4f8cff;
-  --primary-hover: #6b9dff;
-  --primary-fg: #0b0f17;
-  --primary-soft: #16233b;
-  --success: #4ade80;
-  --success-bg: #0f2a1a;
-  --warning: #fbbf24;
-  --warning-bg: #2d2109;
-  --danger: #f87171;
-  --danger-bg: #331414;
-  --info: #22d3ee;
-  --info-bg: #0b2a30;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --ring: rgba(79, 140, 255, 0.45);
+.dark {
   color-scheme: dark;
 }
 
@@ -76,66 +60,118 @@ html[data-theme="dark"] {
   --color-danger-bg: var(--danger-bg);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
+  --font-sans: var(--ea-font-sans);
+  --font-mono: var(--ea-font-mono);
+  --font-heading: var(--ea-font-display);
 }
 
 html {
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: var(--ea-font-sans);
   font-variant-numeric: tabular-nums;
 }
 body {
-  background: var(--bg);
-  color: var(--text-1);
+  background: var(--ea-bg);
+  color: var(--ea-text-1);
   -webkit-font-smoothing: antialiased;
-  transition: background-color 150ms, color 150ms;
+  transition: background-color var(--ea-motion-hover) var(--ea-ease-standard),
+    color var(--ea-motion-hover) var(--ea-ease-standard);
 }
 a { color: inherit; }
-* { border-color: var(--border); }
+* { border-color: var(--ea-border); }
 
-/* ── Компонентууд ─────────────────────────────────────────────────────── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+h1, h2, .kpi-value {
+  font-family: var(--ea-font-display);
+  letter-spacing: -0.01em;
 }
-.card-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
-.card-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+/* ── Компонентууд — Entry-ийн радиус, сүүдэр, hover хэлтэй ─────────────── */
+.card {
+  background: var(--ea-surface);
+  border: 1px solid var(--ea-border);
+  border-radius: var(--ea-r-xl);
+  box-shadow: var(--ea-shadow-2);
+}
+.card-title { font-size: 13px; font-weight: 600; color: var(--ea-text-1); }
+.card-sub { font-size: 12px; color: var(--ea-text-3); margin-top: 2px; }
 
 .input, .select, .textarea {
   width: 100%;
-  border: 1px solid var(--border-2);
-  border-radius: 9px;
+  border: 1px solid var(--ea-border-strong);
+  border-radius: var(--ea-r-lg);
   padding: 8px 11px;
   font-size: 14px;
-  background: var(--surface);
-  color: var(--text-1);
-  transition: border-color 120ms, box-shadow 120ms;
+  background: var(--ea-surface);
+  color: var(--ea-text-1);
+  transition: border-color var(--ea-motion-hover) var(--ea-ease-standard),
+    box-shadow var(--ea-motion-hover) var(--ea-ease-standard);
 }
-.input::placeholder { color: var(--text-3); }
+.input::placeholder { color: var(--ea-text-4); }
 .input:focus, .select:focus, .textarea:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--ea-interactive);
+  box-shadow: var(--ea-focus);
 }
-.input[aria-invalid="true"] { border-color: var(--danger); }
+.input[aria-invalid="true"] { border-color: var(--ea-danger); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border-radius: 9px; padding: 8px 14px; font-size: 14px; font-weight: 500;
-  border: 1px solid var(--border-2); background: var(--surface); color: var(--text-1);
+  border-radius: var(--ea-r-lg); padding: 7px 13px; font-size: 14px; font-weight: 500;
+  border: 1px solid var(--ea-border); background: var(--ea-surface); color: var(--ea-text-1);
   cursor: pointer; white-space: nowrap;
-  transition: background 120ms, border-color 120ms, transform 60ms;
+  transition:
+    transform var(--ea-motion-press) var(--ea-ease-standard),
+    background-color var(--ea-motion-hover) var(--ea-ease-standard),
+    border-color var(--ea-motion-hover) var(--ea-ease-standard),
+    color var(--ea-motion-hover) var(--ea-ease-standard),
+    box-shadow var(--ea-motion-hover) var(--ea-ease-standard);
 }
-.btn:hover { background: var(--surface-2); }
+.btn:focus-visible { outline: none; border-color: var(--ea-interactive); box-shadow: var(--ea-focus); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
-.btn-sm { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
-.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
-.btn-danger:hover { background: var(--danger-bg); }
-.btn-ghost { border-color: transparent; background: transparent; color: var(--text-2); }
-.btn-ghost:hover { background: var(--surface-2); color: var(--text-1); }
+.btn-sm { padding: 5px 10px; font-size: 13px; border-radius: var(--ea-r-md); }
+
+/* Entry-ийн Primary CTA — navy→violet gradient + гялалзах ирмэг. */
+.btn-primary {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--ea-accent) 42%, var(--ea-primary));
+  background: linear-gradient(118deg, var(--ea-primary) 0%, var(--ea-accent-strong) 118%);
+  color: var(--primary-foreground);
+  box-shadow: var(--ea-shadow-button);
+}
+.btn-primary::after {
+  position: absolute;
+  inset: -30% auto -30% -55%;
+  z-index: 0;
+  width: 34%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.26), transparent);
+  content: "";
+  transform: skewX(-18deg);
+  transition: transform var(--ea-motion-lift) var(--ea-ease-standard);
+}
+.btn-primary:focus-visible { box-shadow: var(--ea-shadow-button), var(--ea-focus); }
+
+.btn-danger { color: var(--ea-danger-fg); border-color: color-mix(in srgb, var(--ea-danger) 20%, transparent); background: color-mix(in srgb, var(--ea-danger) 8%, var(--ea-surface)); }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--ea-text-2); }
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { color: var(--ea-text-1); background: var(--ea-hover-subtle); border-color: var(--ea-hover-border); }
+  .btn-primary:hover {
+    color: var(--primary-foreground);
+    border-color: color-mix(in srgb, var(--ea-accent) 64%, var(--ea-primary));
+    background: linear-gradient(118deg, var(--ea-primary-700) 0%, var(--ea-accent) 112%);
+    box-shadow: var(--ea-shadow-button-hover);
+  }
+  .btn-primary:hover::after { transform: translateX(470%) skewX(-18deg); }
+  .btn-danger:hover {
+    color: var(--ea-danger-fg);
+    background: color-mix(in srgb, var(--ea-danger) 14%, var(--ea-surface));
+    border-color: color-mix(in srgb, var(--ea-danger) 38%, var(--ea-border-strong));
+  }
+  .btn-ghost:hover { background: var(--ea-hover-subtle); color: var(--ea-text-1); }
+}
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
@@ -144,49 +180,63 @@ a { color: inherit; }
 }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; opacity: 0.85; }
 .badge-plain::before { display: none; }
-.badge-success { background: var(--success-bg); color: var(--success); }
-.badge-warning { background: var(--warning-bg); color: var(--warning); }
-.badge-danger { background: var(--danger-bg); color: var(--danger); }
-.badge-info { background: var(--info-bg); color: var(--info); }
-.badge-muted { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
-.badge-muted::before { background: var(--text-3); }
+.badge-success { background: var(--ea-success-bg); color: var(--ea-success-fg); }
+.badge-warning { background: var(--ea-warning-bg); color: var(--ea-warning-fg); }
+.badge-danger { background: var(--ea-danger-bg); color: var(--ea-danger-fg); }
+.badge-info { background: var(--ea-accent-bg); color: var(--ea-accent-strong); }
+.badge-muted { background: var(--ea-bg-2); color: var(--ea-text-2); border: 1px solid var(--ea-border); }
+.badge-muted::before { background: var(--ea-text-3); }
 
-.label { display: block; font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 5px; }
-.hint { font-size: 12px; color: var(--text-3); margin-top: 5px; line-height: 1.4; }
+.label { display: block; font-size: 12px; font-weight: 500; color: var(--ea-text-2); margin-bottom: 5px; }
+.hint { font-size: 12px; color: var(--ea-text-4); margin-top: 5px; line-height: 1.4; }
 
 .kpi { padding: 14px 16px; }
-.kpi-label { font-size: 12px; color: var(--text-3); }
+.kpi-label { font-size: 12px; color: var(--ea-text-3); }
 .kpi-value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
-.kpi-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.kpi-sub { font-size: 12px; color: var(--ea-text-3); margin-top: 2px; }
 
 .table { width: 100%; font-size: 14px; border-collapse: collapse; }
-.table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
-.table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table th {
+  text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ea-text-3); padding: 10px 14px;
+  border-bottom: 1px solid var(--ea-border); background: var(--ea-bg-2);
+}
+.table td { padding: 11px 14px; border-bottom: 1px solid var(--ea-border); vertical-align: middle; }
 .table tr:last-child td { border-bottom: 0; }
-.table tbody tr:hover td { background: var(--surface-2); }
+.table tbody tr:hover td { background: var(--ea-hover-subtle); }
+/* Огноо, код зэрэг mono утга нарийн баганад тасрахгүй. */
+.table td .mono, .table td.mono { white-space: nowrap; }
 
 .nav-link {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px;
-  font-size: 14px; color: var(--text-2); transition: background 120ms, color 120ms;
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: var(--ea-r-lg);
+  font-size: 14px; color: var(--ea-text-2);
+  transition: background-color var(--ea-motion-hover) var(--ea-ease-standard),
+    color var(--ea-motion-hover) var(--ea-ease-standard);
 }
-.nav-link:hover { background: var(--surface-2); color: var(--text-1); }
-.nav-link[data-active="true"] { background: var(--primary-soft); color: var(--primary); font-weight: 500; }
-.nav-link svg { width: 17px; height: 17px; flex-shrink: 0; }
+.nav-link:hover { background: var(--ea-hover-subtle); color: var(--ea-text-1); }
+.nav-link[data-active="true"] {
+  background: var(--ea-selected-bg);
+  border: 1px solid var(--ea-selected-border);
+  color: var(--ea-text-1);
+  font-weight: 500;
+}
+.nav-link svg { flex-shrink: 0; }
 
-.divider { height: 1px; background: var(--border); }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-.notice { border-radius: 10px; padding: 9px 12px; font-size: 13px; line-height: 1.45; }
-.notice-success { background: var(--success-bg); color: var(--success); }
-.notice-danger { background: var(--danger-bg); color: var(--danger); }
-.notice-warning { background: var(--warning-bg); color: var(--warning); }
-.notice-info { background: var(--info-bg); color: var(--info); }
+.divider { height: 1px; background: var(--ea-border); }
+.mono { font-family: var(--ea-font-mono); font-size: 12.5px; }
+.notice { border-radius: var(--ea-r-lg); padding: 9px 12px; font-size: 13px; line-height: 1.45; }
+.notice-success { background: var(--ea-success-bg); color: var(--ea-success-fg); }
+.notice-danger { background: var(--ea-danger-bg); color: var(--ea-danger-fg); }
+.notice-warning { background: var(--ea-warning-bg); color: var(--ea-warning-fg); }
+.notice-info { background: var(--ea-accent-bg); color: var(--ea-accent-strong); }
 
-.skeleton { background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+.skeleton { background: linear-gradient(90deg, var(--ea-bg-2) 25%, var(--ea-border) 50%, var(--ea-bg-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--ea-r-md); }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-.check-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.check-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--ea-border); }
 .check-row:last-child { border-bottom: 0; }
 .check-dot { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
-.check-ok { background: var(--success-bg); color: var(--success); }
-.check-fail { background: var(--danger-bg); color: var(--danger); }
-.check-warn { background: var(--warning-bg); color: var(--warning); }
+.check-ok { background: var(--ea-success-bg); color: var(--ea-success-fg); }
+.check-fail { background: var(--ea-danger-bg); color: var(--ea-danger-fg); }
+.check-warn { background: var(--ea-warning-bg); color: var(--ea-warning-fg); }
