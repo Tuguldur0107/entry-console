@@ -20,11 +20,14 @@ import { config } from "./config";
 import {
   addPlanPricePeriod,
   deletePlanPricePeriod,
+  endSupportSession,
+  issueSupportSession,
   SaasApiError,
   saveSaasSubscription,
   setOrgSeatPrice,
 } from "./saas-api";
 import { parsePlanPricePeriodForm, parsePriceField, parseSaasSubscriptionForm } from "./saas-subscriptions";
+import { parseSupportRequest } from "./saas-orgs";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { db } from "./db";
 import {
@@ -45,7 +48,9 @@ import {
   setVariable,
 } from "./github";
 
-export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true; message?: string; /** Дэмжлэгийн линк г.м — UI шууд нээх товч болгоно. */ url?: string }
+  | { ok: false; error: string };
 
 function errorText(error: unknown): string {
   if (error instanceof GitHubError || error instanceof DeployError || error instanceof TeardownError || error instanceof LifecycleError || error instanceof SetupError || error instanceof SignupError || error instanceof UpstreamAccessError || error instanceof SaasApiError) return error.message;
@@ -705,6 +710,57 @@ export async function saveOrgPriceAction(_prev: ActionResult | null, formData: F
           ? `${orgName}: тусгай үнэ цэвэрлэгдэж багцын үнэ дагана`
           : `${orgName}: тусгай үнэ ${price.value.toLocaleString("en-US")}₮ боллоо`,
     };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+// ── Дэмжлэгийн хандалт (core: docs/deployment/support-access.md) ────────────
+// Эрх нь ХЭРЭГЛЭГЧИД биш СЕССЭД уягдана: линк 15 мин хүчинтэй, орсны дараа
+// сесс 1 цаг, орох/гарах бүр харилцагчийн аудитад ил бичигдэнэ.
+
+export async function openSupportSessionAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  await requireSession();
+  const organizationId = text(formData, "organization_id");
+  if (!organizationId) return { ok: false, error: "Байгууллага олдсонгүй" };
+
+  const parsed = parseSupportRequest({
+    email: text(formData, "support_email"),
+    role: text(formData, "support_role"),
+    reason: text(formData, "support_reason"),
+  });
+  if (!parsed.ok) return parsed;
+
+  try {
+    const issued = await issueSupportSession({ organizationId, ...parsed.value }, "console");
+    revalidatePath(`/subscriptions/${organizationId}`);
+    return {
+      ok: true,
+      url: issued.url,
+      message: `${issued.orgName}: линк бэлэн (${issued.email}, ${
+        issued.role === "admin" ? "админ" : "зөвхөн унших"
+      }) — ${issued.linkTtlMinutes} минутын дотор нээнэ үү`,
+    };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+export async function endSupportSessionAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  await requireSession();
+  const id = text(formData, "session_id");
+  const organizationId = text(formData, "organization_id");
+  if (!id) return { ok: false, error: "Сесс сонгоогүй байна" };
+  try {
+    await endSupportSession(id);
+    if (organizationId) revalidatePath(`/subscriptions/${organizationId}`);
+    return { ok: true, message: "Дэмжлэгийн сесс хаагдлаа" };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

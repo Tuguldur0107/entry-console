@@ -32,6 +32,12 @@ export const config = {
     const apiKey = (process.env.ENTRY_SAAS_API_KEY ?? "").trim();
     return apiUrl && apiKey ? { apiUrl, apiKey } : null;
   },
+  /**
+   * Дэмжлэгийн хандалтын DEFAULT и-мэйл — операторын ӨӨРИЙН Entry данс.
+   * Линк тэр данстай хүнд уягддаг тул энэ нь эрх биш, зөвхөн формын default
+   * (хүссэн үедээ өөр хаяг бичиж болно).
+   */
+  supportEmail: (process.env.ENTRY_SUPPORT_EMAIL ?? "").trim().toLowerCase() || null,
   /** Console өөрөө Railway дээр — өөрийн service (хяналтын cron-д хэрэгтэй) */
   self: {
     projectId: process.env.RAILWAY_PROJECT_ID || null,

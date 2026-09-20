@@ -54,8 +54,8 @@ export default async function SubscriptionsPage({
   return (
     <div className="space-y-5">
       <PageHeader
-        title="SaaS багцууд"
-        sub="Үндсэн SaaS сервис дээрх байгууллага бүрийн багц, статус, суудал, хугацаа — өөрчлөлт нь тэр даруй апп-д үйлчилнэ (бичих эрх, боломж, суудлын лимит)."
+        title="SaaS байгууллагууд"
+        sub="Үндсэн SaaS сервис дээрх байгууллага бүрийн багц, статус, суудал, хугацаа. Байгууллагын НЭР дээр дарж дэлгэрэнгүйг нь (гишүүд, тохиргоо, хэрэглээ) харж, дэмжлэгийн хандалтаар доторх нь орно."
       >
         <Link href="/subscriptions/pricing" className="btn btn-sm">Багцын үнэ</Link>
       </PageHeader>

@@ -5,6 +5,11 @@
 import { config } from "./config";
 import { withSeatPrice } from "./saas-subscriptions";
 import type {
+  SaasOrgDetail,
+  SaasSupportRole,
+  SaasSupportSession,
+} from "./saas-orgs";
+import type {
   SaasPlanPriceInput,
   SaasPlanPricePeriod,
   SaasPlanPrices,
@@ -138,4 +143,62 @@ export async function deletePlanPricePeriod(
 ): Promise<PlanPricesResult & { removed: string }> {
   const result = await call<Partial<PlanPricesResult> & { removed: string }>(PLAN_PRICES, "DELETE", { id, actor });
   return { ...normalize(result), removed: result.removed ?? "" };
+}
+
+// ── Байгууллагын дэлгэрэнгүй + дэмжлэгийн хандалт ───────────────────────────
+
+const ORGANIZATIONS = "/api/platform/organizations";
+const SUPPORT_SESSIONS = "/api/platform/support-sessions";
+
+/**
+ * Байгууллагын дэлгэрэнгүй. Core-ийн ХУУЧИН хувилбар энэ замыг мэдэхгүй
+ * (404) — тэр үед null буцаана, Console нь багцын хэсгээ харуулсаар байна
+ * (хилийн цэгцлэлт: жагсаалтын үнийн талбартай ИЖИЛ зарчим).
+ */
+export async function getSaasOrgDetail(organizationId: string): Promise<SaasOrgDetail | null> {
+  try {
+    const result = await call<{ org: SaasOrgDetail }>(
+      `${ORGANIZATIONS}?id=${encodeURIComponent(organizationId)}`,
+      "GET"
+    );
+    return result.org ?? null;
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export type IssuedSupportLink = {
+  id: string;
+  url: string;
+  organizationId: string;
+  orgName: string;
+  email: string;
+  role: SaasSupportRole;
+  expiresAt: string;
+  linkTtlMinutes: number;
+};
+
+/** Дэмжлэгийн линк олгох — core тал нь и-мэйлээр Entry данс олж уяна. */
+export async function issueSupportSession(
+  input: { organizationId: string; email: string; role: SaasSupportRole; reason: string | null },
+  actor: string
+): Promise<IssuedSupportLink> {
+  return call<IssuedSupportLink>(SUPPORT_SESSIONS, "POST", { ...input, actor });
+}
+
+export async function listSupportSessions(
+  organizationId: string,
+  limit = 20
+): Promise<SaasSupportSession[]> {
+  const result = await call<{ rows: SaasSupportSession[] }>(
+    `${SUPPORT_SESSIONS}?organizationId=${encodeURIComponent(organizationId)}&limit=${limit}`,
+    "GET"
+  );
+  return Array.isArray(result.rows) ? result.rows : [];
+}
+
+/** Идэвхтэй сессийг ТАСЛАХ — оператор гарахаа мартсан үед Console-оос. */
+export async function endSupportSession(id: string): Promise<void> {
+  await call<{ ok: true }>(`${SUPPORT_SESSIONS}?id=${encodeURIComponent(id)}`, "DELETE");
 }
