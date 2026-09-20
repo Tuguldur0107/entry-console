@@ -9,7 +9,7 @@ const ITEMS = [
   { href: "/", label: "Самбар", icon: Icons.dashboard, exact: true },
   { href: "/customers", label: "Харилцагчид", icon: Icons.users },
   { href: "/customers/new", label: "Харилцагч нэмэх", icon: Icons.plus, exact: true },
-  { href: "/subscriptions", label: "SaaS багцууд", icon: Icons.activity },
+  { href: "/subscriptions", label: "SaaS байгууллагууд", icon: Icons.activity },
   { href: "/beacons", label: "Илрүүлэлт", icon: Icons.alert },
   { href: "/settings", label: "Тохиргоо, шалгалт", icon: Icons.settings },
 ];
