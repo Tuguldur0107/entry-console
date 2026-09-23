@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 
 import { saveSubscription } from "@/lib/actions";
 import {
@@ -9,7 +9,10 @@ import {
   SAAS_PLAN_LABELS,
   SAAS_STATUS_LABELS,
   SAAS_STATUSES,
+  SUBSCRIPTION_PRESETS,
+  presetOverridesJson,
   type SaasSubscriptionRow,
+  type SubscriptionPreset,
 } from "@/lib/saas-subscriptions";
 
 import { Field, Notice } from "./forms";
@@ -18,6 +21,26 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
   const [result, action, pending] = useActionState(saveSubscription, null);
   const [status, setStatus] = useState(row.status);
   const [overrides, setOverrides] = useState(formatOverrides(row.overrides));
+  const formRef = useRef<HTMLFormElement>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  // Preset нь ЗӨВХӨН формыг бөглөнө — хадгалахыг хэрэглэгч өөрөө дарна
+  // (санамсаргүй бичилтээс сэргийлж, өмнө нь утгыг нь харж засах боломжтой).
+  const applyPreset = (preset: SubscriptionPreset) => {
+    const form = formRef.current;
+    if (!form) return;
+    const set = (name: string, value: string) => {
+      const el = form.elements.namedItem(name);
+      if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) el.value = value;
+    };
+    set("plan_id", preset.planId);
+    set("seats", String(preset.seats));
+    set("current_period_end", preset.currentPeriodEnd);
+    if (preset.note) set("note", preset.note);
+    setStatus(preset.status);
+    setOverrides(presetOverridesJson(preset));
+    setApplied(preset.key);
+  };
   let overridesBad = false;
   if (overrides.trim()) {
     try {
@@ -27,8 +50,34 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
     }
   }
   return (
-    <form action={action} className="space-y-4">
+    <form ref={formRef} action={action} className="space-y-4">
       <input type="hidden" name="organization_id" value={row.organizationId} />
+      <div className="rounded-lg border border-border bg-surface-2 p-3">
+        <div className="mb-2 text-xs font-medium text-text-2">
+          Бэлэн тохиргоо
+          <span className="ml-2 font-normal text-text-3">
+            — формыг бөглөнө, хадгалахыг та дарна
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SUBSCRIPTION_PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              className={applied === preset.key ? "btn btn-primary btn-sm" : "btn btn-sm"}
+              title={preset.hint}
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-text-3">
+          «Нягтлан бодогч» тохиргоо нь олон компани нээнэ. Тухайн хүн шинэ компани
+          үүсгэхэд багц нь автоматаар өвлөгдөнө (үнэ 0₮) — компани бүрд гараар мөр
+          үүсгэх шаардлагагүй.
+        </p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Багц *" hint="«Тусдаа сервис» нь лицензээр — SaaS-д оноохгүй">
           <select name="plan_id" className="select" defaultValue={SAAS_ASSIGNABLE_PLANS.includes(row.planId) ? row.planId : "standard"}>

@@ -22,6 +22,10 @@ import {
   withSeatPrice,
   type SaasPlanPricePeriod,
   type SaasSubscriptionRow,
+  SAAS_ASSIGNABLE_PLANS,
+  SAAS_STATUSES,
+  SUBSCRIPTION_PRESETS,
+  presetOverridesJson,
 } from "../lib/saas-subscriptions";
 
 function row(patch: Partial<SaasSubscriptionRow> = {}): SaasSubscriptionRow {
@@ -327,4 +331,44 @@ test("byOrgName: локалаас ХАМААРАХГҮЙ тогтвортой э
   const names = ["Ямаа", "Адуу", "Бух", "Адуу"].map((orgName) => ({ orgName }));
   assert.deepEqual([...names].sort(byOrgName).map((n) => n.orgName), ["Адуу", "Адуу", "Бух", "Ямаа"]);
   assert.equal(byOrgName({ orgName: "А" }, { orgName: "А" }), 0);
+});
+
+// ── Бэлэн тохиргоо (preset) — «нягтлан бодогч, олон компани» ───────────────
+
+test("нягтлан бодогчийн preset нь ОЛОН компани нээнэ", () => {
+  const preset = SUBSCRIPTION_PRESETS.find((p) => p.key === "accountant-10");
+  assert.ok(preset, "accountant-10 preset байх ёстой");
+  // platform багц нь multi_company боломжтой цорын ганц оноодог багц —
+  // standard дээр 2 дахь компани огт үүсэхгүй.
+  assert.equal(preset.planId, "platform");
+  assert.equal(preset.status, "active");
+  assert.equal(preset.companies, 10);
+  assert.deepEqual(JSON.parse(presetOverridesJson(preset)), {
+    limits: { companies: 10 },
+  });
+});
+
+test("preset бүр хүчинтэй багц + статустай", () => {
+  for (const preset of SUBSCRIPTION_PRESETS) {
+    assert.ok(
+      SAAS_ASSIGNABLE_PLANS.includes(preset.planId),
+      `${preset.key}: багц оноогдохгүй байна`
+    );
+    assert.ok(SAAS_STATUSES.includes(preset.status), `${preset.key}: статус буруу`);
+    assert.ok(preset.seats >= 1, `${preset.key}: суудал 1-ээс доошгүй`);
+    assert.match(preset.currentPeriodEnd, /^\d{4}-\d{2}-\d{2}$/, `${preset.key}: огноо`);
+  }
+});
+
+test("нэг компанийн preset нь companies override ТАВИХГҮЙ", () => {
+  // Standard багц өөрөө 1 компанитай — override бичвэл утгагүй давхардал.
+  const preset = SUBSCRIPTION_PRESETS.find((p) => p.key === "single");
+  assert.ok(preset);
+  assert.equal(preset.companies, null);
+  assert.equal(presetOverridesJson(preset), "");
+});
+
+test("preset-ийн түлхүүр давхардахгүй", () => {
+  const keys = SUBSCRIPTION_PRESETS.map((p) => p.key);
+  assert.equal(new Set(keys).size, keys.length);
 });

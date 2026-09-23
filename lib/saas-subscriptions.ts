@@ -85,6 +85,77 @@ export const SAAS_PLAN_LABELS: Record<SaasPlanId, string> = {
 /** Console-оос ОНООЖ болох багцууд — `dedicated` нь лицензээр (тусдаа deploy), SaaS-д биш. */
 export const SAAS_ASSIGNABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise"];
 
+/**
+ * БЭЛЭН ТОХИРГОО (preset) — түгээмэл харилцагчийн загварыг нэг товчоор.
+ *
+ * Гол хэрэглээ: «хувь хүн — олон байгууллагын НББ хөтөлдөг нягтлан».
+ * Багц нь байгууллага бүрд мөртэй атлаа компанийн хязгаар нь ЭЗЭН хүнээр
+ * тоологддог тул (core `countOwnedCompanies`) энэ төрлийн харилцагчид
+ * `platform` багц + `limits.companies` override хэрэгтэй.
+ *
+ * Апп талд шинэ компани үүсэхэд эх байгууллагынхаа багцыг ӨВЛӨДӨГ болсон
+ * (core `inheritSubscriptionForNewOrg`) тул ЭНЭ НЭГ мөрийг тохируулахад
+ * тухайн нягтлангийн бүх компани ажиллана — компани бүрд гараар мөр
+ * үүсгэх шаардлагагүй.
+ */
+export type SubscriptionPreset = {
+  key: string;
+  label: string;
+  hint: string;
+  planId: SaasPlanId;
+  status: SaasSubscriptionStatus;
+  seats: number;
+  companies: number | null;
+  /** YYYY-MM-DD — хоосон бол хөндөхгүй. */
+  currentPeriodEnd: string;
+  note: string;
+};
+
+/** Туршилтын/гэрээний хугацааны түгээмэл эцэс — гараар солиж болно. */
+export const PRESET_PERIOD_END = "2030-12-31";
+
+export const SUBSCRIPTION_PRESETS: SubscriptionPreset[] = [
+  {
+    key: "accountant-10",
+    label: "Нягтлан бодогч — 10 компани",
+    hint: "Хувь хүн, олон байгууллагын НББ хөтөлдөг",
+    planId: "platform",
+    status: "active",
+    seats: 1,
+    companies: 10,
+    currentPeriodEnd: PRESET_PERIOD_END,
+    note: "Нягтлан бодогч (хувь хүн) — 10 компани",
+  },
+  {
+    key: "accountant-25",
+    label: "Нягтлан бодогч — 25 компани",
+    hint: "НББ-ийн фирм / томоохон багц",
+    planId: "platform",
+    status: "active",
+    seats: 3,
+    companies: 25,
+    currentPeriodEnd: PRESET_PERIOD_END,
+    note: "НББ фирм — 25 компани",
+  },
+  {
+    key: "single",
+    label: "Нэг компани (Standard)",
+    hint: "Ердийн нэг байгууллагын харилцагч",
+    planId: "standard",
+    status: "active",
+    seats: 1,
+    companies: null,
+    currentPeriodEnd: PRESET_PERIOD_END,
+    note: "",
+  },
+];
+
+/** Preset → overrides JSON текст (хоосон бол хоосон мөр). */
+export function presetOverridesJson(preset: SubscriptionPreset): string {
+  if (preset.companies === null) return "";
+  return JSON.stringify({ limits: { companies: preset.companies } }, null, 2);
+}
+
 export const SAAS_STATUS_LABELS: Record<SaasSubscriptionStatus, string> = {
   trialing: "Туршилт",
   active: "Идэвхтэй",
