@@ -5,6 +5,8 @@ import { useActionState, useRef, useState } from "react";
 import { saveSubscription } from "@/lib/actions";
 import {
   formatOverrides,
+  overrideFeatureState,
+  setOverrideFeature,
   SAAS_ASSIGNABLE_PLANS,
   SAAS_PLAN_LABELS,
   SAAS_STATUS_LABELS,
@@ -120,7 +122,23 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
           <input name="note" className="input" defaultValue={row.note ?? ""} maxLength={500} />
         </Field>
       </div>
-      <Field label="overrides (JSON)" hint='Багцаас ялгаатай хэсэг л: {"features":{"api.rest":true},"limits":{"seats":5}} · хоосон = багцын дагуу'>
+      <Field
+        label="Мэдлэгийн сан (IFRS, татвар, цалин — AI/MCP)"
+        hint="Аль ч багцад default OFF — энд асаахад л энэ байгууллагын AI чат, MCP-д мэдлэгийн сан нээгдэнэ (core: docs/knowledge/00-proposal.md D2). Доорх overrides JSON-д features.knowledge болж бичигдэнэ."
+      >
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={overrideFeatureState(overrides, "knowledge") === true}
+            disabled={overridesBad}
+            onChange={(e) =>
+              setOverrides(setOverrideFeature(overrides, "knowledge", e.target.checked ? true : null))
+            }
+          />
+          {overrideFeatureState(overrides, "knowledge") === true ? "Нээлттэй" : "Хаалттай (багцын дагуу)"}
+        </label>
+      </Field>
+      <Field label="overrides (JSON)" hint='Багцаас ялгаатай хэсэг л: {"features":{"api.rest":true,"knowledge":true},"limits":{"seats":5}} · хоосон = багцын дагуу'>
         <textarea
           name="overrides"
           className="textarea mono"
