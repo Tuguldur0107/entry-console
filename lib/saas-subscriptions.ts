@@ -387,3 +387,42 @@ export function withSeatPrice(row: SaasSubscriptionRow, pricePerSeatMnt: number 
     note: row.note,
   };
 }
+
+// ── Багцын боломжийн override (Console-оос байгууллага бүрд асаах/унтраах) ──
+
+/** overrides JSON текст → тухайн боломж ИЛ асаалттай эсэх (байхгүй = багцын дагуу). */
+export function overrideFeatureState(overridesJson: string, key: string): boolean | null {
+  if (!overridesJson.trim()) return null;
+  try {
+    const parsed = JSON.parse(overridesJson) as { features?: Record<string, unknown> };
+    const value = parsed?.features?.[key];
+    return typeof value === "boolean" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * overrides JSON текстэд боломжийг асаана/унтраана — бусад түлхүүр хэвээр.
+ * `on === null` бол override-ыг хасна (багцын default руу буцна). Буруу JSON
+ * бол ХӨНДӨХГҮЙ — хэрэглэгчийн бичсэн текстийг устгахгүй.
+ */
+export function setOverrideFeature(overridesJson: string, key: string, on: boolean | null): string {
+  let parsed: { features?: Record<string, unknown>; limits?: unknown } = {};
+  if (overridesJson.trim()) {
+    try {
+      const value = JSON.parse(overridesJson);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return overridesJson;
+      parsed = value;
+    } catch {
+      return overridesJson;
+    }
+  }
+  const features = { ...(parsed.features ?? {}) };
+  if (on === null) delete features[key];
+  else features[key] = on;
+  const next: Record<string, unknown> = { ...parsed };
+  if (Object.keys(features).length > 0) next.features = features;
+  else delete next.features;
+  return Object.keys(next).length === 0 ? "" : JSON.stringify(next, null, 2);
+}
