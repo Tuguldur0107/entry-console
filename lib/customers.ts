@@ -20,6 +20,7 @@ import {
   type WorkflowRun,
 } from "./github";
 import { deployNow, syncRepoConnections } from "./deploy";
+import { needsPushKey } from "./push-key";
 import { grantUpstreamAccess } from "./upstream-access";
 import { latestDeployment, railwayCanConnectRepo, railwayConfigured, type RailwayStatus } from "./railway";
 
@@ -271,6 +272,10 @@ export function computeAttention(
       out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Сүүлийн backup ${Math.round((Date.now() - c.lastBackupAt.getTime()) / 3600000)} цагийн өмнө — Railway backup-ыг шалга` });
     if (c.customDomain && !c.customDomainVerified)
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `${c.customDomain} DNS хүлээж байна — CNAME → ${c.dnsTarget ?? "?"}` });
+    // Push түлхүүргүй бол workflow хөндсөн шинэчлэлт ЧИМЭЭГҮЙ унана — харилцагч
+    // хоцроогүй (behind === false) үед ч ил харуулна (2026-09-21-ний давтамж).
+    if (needsPushKey(c))
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: "Sync push түлхүүр алга — workflow хөндсөн шинэчлэлт унана. Хяналт автоматаар үүсгэнэ; удаан үлдвэл «Түлхүүр шинэчлэх»" });
     if (c.status === "active" && !c.upstreamAccess)
       out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: "Шинэчлэлт авах эрх цуцлагдсан — шинэ хувилбар очихгүй (захиалга)" });
     // Эрхтэй атлаа авто sync унтраалттай = release бүрд ГАРААР merge хийх

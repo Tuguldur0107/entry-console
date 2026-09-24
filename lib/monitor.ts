@@ -9,7 +9,8 @@ import { attachBackupsAndDomain } from "./deploy";
 import { logEvent } from "./customers";
 import { db } from "./db";
 import { ensureSchema } from "./db/ensure";
-import { bootstrapSyncWorkflow } from "./upstream-access";
+import { needsPushKey, pushKeyFailureText, pushKeyRetryDue } from "./push-key";
+import { bootstrapSyncWorkflow, ensureSyncPushKey } from "./upstream-access";
 import { openSyncPulls } from "./sync-pr";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
@@ -30,6 +31,8 @@ export interface MonitorSummary {
 }
 
 const REALERT_MS = 6 * 60 * 60 * 1000;
+/** Push түлхүүрийн сүүлийн АМЖИЛТГҮЙ оролдлого (процесс дотор — restart бол шууд дахин оролдоно). */
+const pushKeyAttempts = new Map<string, Date>();
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const norm = (v: string | null | undefined) => (v ?? "").replace(/^v/, "");
 
@@ -129,6 +132,22 @@ export async function runMonitor(): Promise<MonitorSummary> {
         } catch (error) {
           summary.errors.push(`${c.slug} domain: ${msg(error)}`);
         }
+      }
+    }
+
+    // 3a. Push түлхүүр дутуу бол нөхнө — үгүй бол core-ийн workflow хөндсөн
+    // шинэчлэлт GITHUB_TOKEN-оор push хийгдэхгүй, sync чимээгүй унадаг.
+    if (c.githubRepo && needsPushKey(c) && pushKeyRetryDue(pushKeyAttempts.get(c.id), now)) {
+      try {
+        await ensureSyncPushKey(c);
+        pushKeyAttempts.delete(c.id);
+        summary.synced.push(`${c.slug}:push-key`);
+      } catch (error) {
+        pushKeyAttempts.set(c.id, now);
+        const text = pushKeyFailureText(msg(error), config.owner);
+        summary.errors.push(`${c.slug} push key: ${msg(error)}`);
+        alerts.push(`⚠️ ${label} — ${text}`);
+        await logEvent(c.id, "alert", text);
       }
     }
 

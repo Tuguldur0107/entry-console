@@ -35,6 +35,7 @@ import {
   listDeployKeys,
   setRepoSecret,
 } from "./github";
+import { pushKeyFailureText } from "./push-key";
 import { generateSshKeyPair } from "./ssh-key";
 
 export class UpstreamAccessError extends Error {}
@@ -107,24 +108,9 @@ export async function grantUpstreamAccess(customer: Customer): Promise<Customer>
     // түлхүүргүйг UI «push түлхүүр —» гэж харуулж анхааруулна.
     let pushKeyId: number | null = null;
     try {
-      const pushExisting = await listDeployKeys(customer.githubRepo).catch(() => []);
-      for (const k of pushExisting) {
-        if (k.id === customer.syncPushKeyId || k.title === PUSH_KEY_TITLE) await deleteDeployKey(customer.githubRepo, k.id);
-      }
-      const pushPair = generateSshKeyPair(`entry-${customer.slug}-push`);
-      const pushKey = await addDeployKey(customer.githubRepo, PUSH_KEY_TITLE, pushPair.publicKey, { readOnly: false });
-      await setRepoSecret(customer.githubRepo, PUSH_SECRET_NAME, pushPair.privateKey);
-      pushKeyId = pushKey.id;
+      pushKeyId = await createSyncPushKey(customer);
     } catch (error) {
-      const why = error instanceof Error ? error.message : String(error);
-      const hint = /deploy keys are disabled/i.test(why)
-        ? ` — GitHub org «${config.owner}» дээр deploy key хориглогдсон: Organization Settings → Repository → Deploy keys → зөвшөөрөх`
-        : "";
-      await logEvent(
-        customer.id,
-        "access",
-        `Push түлхүүр үүсгэж чадсангүй: ${why}${hint}. Workflow хөндсөн шинэчлэлт энэ харилцагч дээр унана.`
-      );
+      await logEvent(customer.id, "access", pushKeyFailureText(error instanceof Error ? error.message : String(error), config.owner));
     }
 
     const [next] = await db
@@ -143,6 +129,34 @@ export async function grantUpstreamAccess(customer: Customer): Promise<Customer>
       throw new UpstreamAccessError(`GitHub эрх хүрэхгүй: ${error.message} — token-д admin эрх хэрэгтэй`);
     throw error;
   }
+}
+
+/**
+ * Харилцагчийн ӨӨРИЙН repo дээр БИЧИХ эрхтэй push түлхүүр үүсгэж
+ * `SYNC_PUSH_KEY` secret-д тавина. Хуучин ижил гарчигтай түлхүүрийг эхлээд
+ * устгана (нэг харилцагчид нэг л push түлхүүр). Алдааг ШИДНЭ — дуудагч шийднэ.
+ */
+async function createSyncPushKey(customer: Customer): Promise<number> {
+  const existing = await listDeployKeys(customer.githubRepo).catch(() => []);
+  for (const k of existing) {
+    if (k.id === customer.syncPushKeyId || k.title === PUSH_KEY_TITLE) await deleteDeployKey(customer.githubRepo, k.id);
+  }
+  const pair = generateSshKeyPair(`entry-${customer.slug}-push`);
+  const key = await addDeployKey(customer.githubRepo, PUSH_KEY_TITLE, pair.publicKey, { readOnly: false });
+  await setRepoSecret(customer.githubRepo, PUSH_SECRET_NAME, pair.privateKey);
+  return key.id;
+}
+
+/**
+ * Push түлхүүргүй харилцагчид (механизм нэмэгдэхээс өмнө эрх авсан) ЗӨВХӨН
+ * push түлхүүрийг нөхөж үүсгэнэ — core дээрх унших түлхүүрийг ХӨНДӨХГҮЙ
+ * (rotate хийхгүй). Хяналт (monitor.ts) дууддаг; алдааг ШИДНЭ.
+ */
+export async function ensureSyncPushKey(customer: Customer): Promise<number> {
+  const id = await createSyncPushKey(customer);
+  await db.update(customers).set({ syncPushKeyId: id, updatedAt: new Date() }).where(eq(customers.id, customer.id));
+  await logEvent(customer.id, "access", "Sync push түлхүүр автоматаар үүсгэв (өмнө нь алга байсан — workflow хөндсөн шинэчлэлт унадаг байв)");
+  return id;
 }
 
 /**
