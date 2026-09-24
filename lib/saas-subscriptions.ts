@@ -3,7 +3,7 @@
 // core талд шинэ багц нэмэгдвэл энд ч нэмнэ (API validation core-д хийгдэнэ,
 // энд зөвхөн харуулах шошго + формын урьдчилсан шалгалт).
 
-export type SaasPlanId = "trial" | "standard" | "platform" | "enterprise" | "dedicated";
+export type SaasPlanId = "trial" | "standard" | "platform" | "enterprise" | "dedicated" | "skills";
 export type SaasSubscriptionStatus = "trialing" | "active" | "past_due" | "suspended" | "cancelled";
 
 /** core: PlatformSubscriptionRow (lib/billing/platform.ts) — API-ийн JSON хэлбэр. */
@@ -80,10 +80,11 @@ export const SAAS_PLAN_LABELS: Record<SaasPlanId, string> = {
   platform: "Platform",
   enterprise: "Enterprise",
   dedicated: "Тусдаа сервис",
+  skills: "AI нягтлан (мэдлэгийн сан л)",
 };
 
 /** Console-оос ОНООЖ болох багцууд — `dedicated` нь лицензээр (тусдаа deploy), SaaS-д биш. */
-export const SAAS_ASSIGNABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise"];
+export const SAAS_ASSIGNABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise", "skills"];
 
 /**
  * БЭЛЭН ТОХИРГОО (preset) — түгээмэл харилцагчийн загварыг нэг товчоор.
@@ -186,7 +187,7 @@ export function isSaasStatus(value: unknown): value is SaasSubscriptionStatus {
 export type SaasListFilter = { status?: string; q?: string };
 
 /** Үнэ тохируулж болох багцууд — trial нь үргэлж 0₮ тул жагсаалтад ОРНО (хөнгөлөлттэй туршилт). */
-export const SAAS_PRICEABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise", "dedicated"];
+export const SAAS_PRICEABLE_PLANS: SaasPlanId[] = ["trial", "standard", "platform", "enterprise", "dedicated", "skills"];
 
 /** Үнийн талбар → ₮ бүхэл тоо; хоосон → null (хэлэлцээрээр). core-ийн дүрэмтэй ИЖИЛ. */
 export const MAX_PLAN_PRICE_MNT = 100_000_000;

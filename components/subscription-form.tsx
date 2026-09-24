@@ -124,18 +124,18 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
       </div>
       <Field
         label="Мэдлэгийн сан (IFRS, татвар, цалин — AI/MCP)"
-        hint="Аль ч багцад default OFF — энд асаахад л энэ байгууллагын AI чат, MCP-д мэдлэгийн сан нээгдэнэ (core: docs/knowledge/00-proposal.md D2). Доорх overrides JSON-д features.knowledge болж бичигдэнэ."
+        hint="SaaS-ийн багц бүрд (AI нягтлан ч) default-оор НЭЭЛТТЭЙ (core: docs/knowledge/00-proposal.md D2′). Унтраавал доорх overrides JSON-д features.knowledge: false болж бичигдэнэ; буцааж асаахад override хасагдана."
       >
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={overrideFeatureState(overrides, "knowledge") === true}
+            checked={overrideFeatureState(overrides, "knowledge") !== false}
             disabled={overridesBad}
             onChange={(e) =>
-              setOverrides(setOverrideFeature(overrides, "knowledge", e.target.checked ? true : null))
+              setOverrides(setOverrideFeature(overrides, "knowledge", e.target.checked ? null : false))
             }
           />
-          {overrideFeatureState(overrides, "knowledge") === true ? "Нээлттэй" : "Хаалттай (багцын дагуу)"}
+          {overrideFeatureState(overrides, "knowledge") === false ? "Хаалттай (энэ байгууллагад унтраасан)" : "Нээлттэй (багцын дагуу)"}
         </label>
       </Field>
       <Field label="overrides (JSON)" hint='Багцаас ялгаатай хэсэг л: {"features":{"api.rest":true,"knowledge":true},"limits":{"seats":5}} · хоосон = багцын дагуу'>
