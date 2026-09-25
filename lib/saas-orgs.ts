@@ -50,6 +50,13 @@ export type SaasOrgDetail = {
     lastClosedPeriod: string | null;
   };
   lastActivityAt: string | null;
+  /** «AI нягтлан» хэрэглээ — core-ийн ХУУЧИН хувилбарт байхгүй (undefined). */
+  aiAccountant?: {
+    knowledgeReads30d: number;
+    lastKnowledgeReadAt: string | null;
+    oauthConnections: number;
+    lastConnectorUseAt: string | null;
+  };
   supportSessions: SaasSupportSession[];
 };
 

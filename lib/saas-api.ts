@@ -3,6 +3,7 @@
 // Core талд зөвхөн saas горимд нээлттэй (dedicated deploy → 404).
 
 import { config } from "./config";
+import type { SaasBillingPayment } from "./saas-billing";
 import { withSeatPrice } from "./saas-subscriptions";
 import type {
   SaasOrgDetail,
@@ -201,4 +202,28 @@ export async function listSupportSessions(
 /** Идэвхтэй сессийг ТАСЛАХ — оператор гарахаа мартсан үед Console-оос. */
 export async function endSupportSession(id: string): Promise<void> {
   await call<{ ok: true }>(`${SUPPORT_SESSIONS}?id=${encodeURIComponent(id)}`, "DELETE");
+}
+
+// ── Багцын QPay төлбөр ────────────────────────────────────────────────────
+
+const BILLING_PAYMENTS = "/api/platform/billing-payments";
+
+/**
+ * Багцын QPay төлбөрүүд (шинэ нь эхэнд). Core-ийн ХУУЧИН хувилбар энэ замыг
+ * мэдэхгүй (404) — хоосон жагсаалт буцаана (хилийн цэгцлэлт).
+ */
+export async function listSaasBillingPayments(
+  filter: { organizationId?: string; limit?: number } = {}
+): Promise<SaasBillingPayment[]> {
+  const params = new URLSearchParams();
+  if (filter.organizationId) params.set("organizationId", filter.organizationId);
+  if (filter.limit) params.set("limit", String(filter.limit));
+  const query = params.toString();
+  try {
+    const result = await call<{ rows: SaasBillingPayment[] }>(`${BILLING_PAYMENTS}${query ? `?${query}` : ""}`, "GET");
+    return Array.isArray(result.rows) ? result.rows : [];
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404) return [];
+    throw error;
+  }
 }
