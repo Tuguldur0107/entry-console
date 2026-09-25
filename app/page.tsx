@@ -9,13 +9,20 @@ import { config } from "@/lib/config";
 import { toCustomerGridRow } from "@/lib/customer-grid";
 import { autoSyncStats, computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
 import { isRequestStatus } from "@/lib/db/schema";
+import { listSaasSubscriptions, saasApiConfigured } from "@/lib/saas-api";
+import { computeSaasAttention } from "@/lib/saas-attention";
+import { summarizeRevenue, summarizeSaasRows, type SaasSubscriptionRow } from "@/lib/saas-subscriptions";
 
 export const dynamic = "force-dynamic";
 
 
 export default async function DashboardPage() {
   await requireSession();
-  const [{ latest, customers, provisioning, githubErrors }, activity] = await Promise.all([loadDashboard(), loadRecentActivity(10)]);
+  const [{ latest, customers, provisioning, githubErrors }, activity, saas] = await Promise.all([
+    loadDashboard(),
+    loadRecentActivity(10),
+    loadSaasOverview(),
+  ]);
   const requests = customers.filter((c) => c.customer.status === "pending");
   const visible = customers.filter((c) => c.customer.status !== "archived" && !isRequestStatus(c.customer.status));
   const active = visible.filter((c) => c.customer.status === "active");
@@ -24,6 +31,9 @@ export default async function DashboardPage() {
   const mrr = active.reduce((s, c) => s + Number(c.customer.monthlyFee), 0);
   const attention = computeAttention(visible, latest, githubErrors.length === 0);
   const sync = autoSyncStats(visible.map((c) => c.customer));
+  const saasSummary = summarizeSaasRows(saas.rows);
+  const saasRevenue = summarizeRevenue(saas.rows);
+  const saasAttention = computeSaasAttention(saas.rows);
 
   return (
     <div className="space-y-5">
@@ -66,10 +76,44 @@ export default async function DashboardPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${visible.length}${provisioning.length ? ` · үүсгэж байна ${provisioning.length}` : ""}${requests.length ? ` · хүсэлт ${requests.length}` : ""}`} href="/customers" />
-        <Kpi label="Сарын орлого (MRR)" value={fmtMnt(mrr)} sub="идэвхтэй харилцагчдын сарын төлбөр" />
+        <Kpi label="Сарын орлого (MRR)" value={fmtMnt(mrr + saasRevenue.mrrMnt)} sub={`тусдаа сервис ${fmtMnt(mrr)} · SaaS ${fmtMnt(saasRevenue.mrrMnt)}${saasRevenue.unknown ? ` · ${saasRevenue.unknown} дүн тодорхойгүй` : ""}`} tone={saasRevenue.unknown ? "warning" : undefined} href="/subscriptions/pricing" />
         <Kpi label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} sub={`${latest ? `core ${latest.tagName} · ` : ""}авто sync ${sync.on}/${sync.eligible}`} />
         <Kpi label="Хүрэхгүй deploy" value={String(downCount)} tone={downCount > 0 ? "danger" : "success"} sub="/api/health хариу" />
       </div>
+
+      <Section
+        title="SaaS байгууллагууд"
+        sub={saas.error ? "SaaS API холбогдоогүй" : `${saasSummary.total} байгууллага · ${saasSummary.active} идэвхтэй · ${saasSummary.trialing} туршилт · ${saasRevenue.billable} төлбөртэй`}
+        right={<Link href="/subscriptions" className="btn btn-ghost btn-sm">Жагсаалт</Link>}
+      >
+        {saas.error ? (
+          <p className="notice notice-warning">{saas.error} — <Link href="/settings" className="underline">Тохиргоо, шалгалт</Link></p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <Kpi label="Байгууллага" value={String(saasSummary.total)} sub={`${saasSummary.active} идэвхтэй · ${saasSummary.trialing} туршилт`} href="/subscriptions" />
+              <Kpi label="Төлбөр хоцорсон" value={String(saasSummary.pastDue)} sub={`${saasSummary.suspended} түр зогсоосон`} tone={saasSummary.pastDue ? "warning" : undefined} href="/subscriptions?status=past_due" />
+              <Kpi label="Зөвхөн унших" value={String(saasSummary.readOnly)} sub="бичих эрх хаагдсан" tone={saasSummary.readOnly ? "danger" : undefined} href="/subscriptions?status=readonly" />
+              <Kpi label="7 хоногт дуусах" value={String(saasSummary.endingSoon)} sub={saasSummary.overSeats ? `${saasSummary.overSeats} суудал хэтэрсэн` : "trial / grace"} tone={saasSummary.endingSoon || saasSummary.overSeats ? "warning" : undefined} href="/subscriptions?status=trialing" />
+              <Kpi label="SaaS MRR" value={fmtMnt(saasRevenue.mrrMnt)} sub={`${saasRevenue.billable} төлбөртэй${saasRevenue.unknown ? ` · ${saasRevenue.unknown} дүн тодорхойгүй` : ""}`} tone={saasRevenue.unknown ? "warning" : undefined} href="/subscriptions/pricing" />
+            </div>
+            {saasAttention.length === 0 ? (
+              <p className="text-sm text-text-3">Анхаарах байгууллага алга — бичих эрх нээлттэй, төлбөр хугацаандаа.</p>
+            ) : (
+              <ul className="space-y-2">
+                {saasAttention.slice(0, 8).map((a, i) => (
+                  <li key={`${a.organizationId}-${i}`} className={`notice notice-${a.tone}`}>
+                    <Link href={`/subscriptions/${a.organizationId}`} className="font-medium hover:underline">{a.title}</Link> — {a.detail}
+                  </li>
+                ))}
+                {saasAttention.length > 8 ? (
+                  <li className="text-xs text-text-3">… дахин {saasAttention.length - 8} — <Link href="/subscriptions?status=past_due" className="underline">жагсаалтаас</Link></li>
+                ) : null}
+              </ul>
+            )}
+          </div>
+        )}
+      </Section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
@@ -134,4 +178,14 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+/** SaaS API тохируулаагүй / хүрэхгүй бол самбар унахгүй — хэсэг нь анхааруулгатай. */
+async function loadSaasOverview(): Promise<{ rows: SaasSubscriptionRow[]; error: string | null }> {
+  if (!saasApiConfigured()) return { rows: [], error: "ENTRY_SAAS_API_URL / ENTRY_SAAS_API_KEY тохируулаагүй" };
+  try {
+    return { rows: await listSaasSubscriptions(), error: null };
+  } catch (caught) {
+    return { rows: [], error: caught instanceof Error ? caught.message : String(caught) };
+  }
 }

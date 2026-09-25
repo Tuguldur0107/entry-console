@@ -23,6 +23,7 @@ import {
   endSupportSession,
   issueSupportSession,
   SaasApiError,
+  deleteSaasOrganization,
   saveSaasSubscription,
   setOrgSeatPrice,
 } from "./saas-api";
@@ -655,6 +656,29 @@ export async function saveSubscription(_prev: ActionResult | null, formData: For
     revalidatePath("/subscriptions");
     revalidatePath(`/subscriptions/${saved.organizationId}`);
     return { ok: true, message: `${saved.orgName}: багц хадгалагдлаа` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** SaaS байгууллагыг БҮРМӨСӨН устгах — core-ийн DELETE /api/platform/organizations. */
+export async function deleteSaasOrganizationAction(
+  organizationId: string,
+  confirmName: string,
+  purgeUsers: boolean
+): Promise<ActionResult> {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/i.test(organizationId)) return { ok: false, error: "Байгууллагын ID буруу" };
+  if (!confirmName.trim()) return { ok: false, error: "Баталгаажуулахын тулд нэрийг яг бичнэ" };
+  try {
+    const result = await deleteSaasOrganization(organizationId, confirmName, purgeUsers, "console");
+    revalidatePath("/");
+    revalidatePath("/subscriptions");
+    revalidatePath("/ai-accountant");
+    return {
+      ok: true,
+      message: `«${result.orgName}» устлаа — гишүүн ${result.memberCount}, устгасан хэрэглэгч ${result.deletedUsers}${result.keptUsers ? `, үлдсэн ${result.keptUsers}` : ""}`,
+    };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

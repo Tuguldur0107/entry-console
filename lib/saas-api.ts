@@ -174,6 +174,40 @@ export async function getSaasOrgDetail(organizationId: string): Promise<SaasOrgD
   }
 }
 
+export type SaasOrgPurgeResult = {
+  organizationId: string;
+  orgName: string;
+  memberCount: number;
+  deletedUsers: number;
+  keptUsers: number;
+};
+
+/**
+ * Байгууллагыг core сервисээс БҮРМӨСӨН устгана (DELETE /api/platform/organizations).
+ * Core тал нэр/ID-г дахин шалгана; хуучин core (зам байхгүй → 404/405) ил алдаа.
+ */
+export async function deleteSaasOrganization(
+  organizationId: string,
+  confirm: string,
+  purgeUsers: boolean,
+  actor: string
+): Promise<SaasOrgPurgeResult> {
+  try {
+    return await call<SaasOrgPurgeResult>(
+      `${ORGANIZATIONS}?id=${encodeURIComponent(organizationId)}`,
+      "DELETE",
+      { confirm, purgeUsers, actor }
+    );
+  } catch (error) {
+    if (error instanceof SaasApiError && (error.status === 404 || error.status === 405))
+      throw new SaasApiError(
+        "Core сервисийн хувилбар байгууллага устгах замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
+        error.status
+      );
+    throw error;
+  }
+}
+
 export type IssuedSupportLink = {
   id: string;
   url: string;
