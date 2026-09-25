@@ -16,6 +16,7 @@ import { SAAS_PLAN_LABELS, type SaasPlanId } from "@/lib/saas-subscriptions";
 
 const href = (row: SaasBillingPayment) => `/subscriptions/${row.organizationId}`;
 const planLabel = (planId: string) => SAAS_PLAN_LABELS[planId as SaasPlanId] ?? planId;
+const shortInvoiceId = (id: string | null) => (!id ? "—" : id.length > 12 ? `${id.slice(0, 8)}…` : id);
 
 function StatusBadge({ row }: { row: SaasBillingPayment }) {
   return (
@@ -40,8 +41,9 @@ function columns(showOrg: boolean): ColDef<SaasBillingPayment>[] {
     list.push({
       headerName: "Байгууллага",
       field: "orgName",
-      minWidth: 180,
+      minWidth: 230,
       flex: 2,
+      tooltipValueGetter: ({ data }) => (data ? [data.orgName, data.payerEmail].filter(Boolean).join(" · ") : null),
       cellClass: "cell-stack",
       cellRenderer: ({ data }: { data?: SaasBillingPayment }) =>
         data ? (
@@ -56,8 +58,9 @@ function columns(showOrg: boolean): ColDef<SaasBillingPayment>[] {
     {
       headerName: "Багц",
       field: "planId",
-      minWidth: 150,
-      flex: 1,
+      minWidth: 210,
+      flex: 1.5,
+      tooltipValueGetter: ({ data }) => (data ? `${planLabel(data.planId)} · ${describePaymentTerm(data)}` : null),
       cellClass: "cell-stack",
       cellRenderer: ({ data }: { data?: SaasBillingPayment }) =>
         data ? (
@@ -78,16 +81,17 @@ function columns(showOrg: boolean): ColDef<SaasBillingPayment>[] {
     {
       headerName: "Хүчинтэй хүртэл",
       field: "periodEnd",
-      minWidth: 120,
+      minWidth: 150,
       valueFormatter: ({ value }) => (value ? fmtDate(value as string, false) : "—"),
     },
     {
       headerName: "QPay нэхэмжлэх",
       field: "qpayInvoiceId",
-      minWidth: 150,
+      minWidth: 130,
       cellClass: "mono",
-      tooltipValueGetter: ({ data }) => data?.lastError ?? data?.qpayInvoiceId ?? null,
-      valueFormatter: ({ value }) => (value as string | null) ?? "—",
+      // UUID бүтнээрээ 36 тэмдэгт — хүснэгтэд эхний 8-ыг, бүтнийг tooltip-д (хайлт бүтэн ID-гаар ажиллана)
+      tooltipValueGetter: ({ data }) => [data?.qpayInvoiceId, data?.lastError].filter(Boolean).join(" · ") || null,
+      valueFormatter: ({ value }) => shortInvoiceId(value as string | null),
     }
   );
   return list;
