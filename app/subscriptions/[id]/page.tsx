@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { BillingPaymentsGrid } from "@/components/grids/billing-payments-grid";
 import { MembersGrid } from "@/components/grids/members-grid";
+import { SaasOrgDangerZone } from "@/components/saas-org-danger";
 import { SupportAccessSection } from "@/components/support-access";
 import { SubscriptionForm } from "@/components/subscription-form";
 import { fmtDate, fmtMnt, PageHeader, Section } from "@/components/ui";
@@ -147,6 +148,10 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
               )}
             </Section>
           ) : null}
+
+          <Section title="Аюултай бүс" sub="Туршилтын эсвэл гэрээ дууссан байгууллагыг core сервисээс цэвэрлэх">
+            <SaasOrgDangerZone organizationId={row.organizationId} orgName={row.orgName} memberCount={row.memberCount} />
+          </Section>
         </div>
 
         {/* Утсан дээр төлөв ЭХЭНД (ихэвчлэн харах гэж нээдэг), десктопод баруун баганад */}

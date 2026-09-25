@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </form>
                 </div>
               </header>
-              <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-5 md:px-6 md:py-6">{children}</main>
+              <main className="w-full min-w-0 flex-1 px-4 py-5 md:px-6 md:py-6 xl:px-8">{children}</main>
             </div>
           </div>
         ) : (
