@@ -36,6 +36,12 @@ export type SaasSubscriptionRow = {
   /** organization_subscriptions мөр бий юу (үгүй бол default trial/standard) */
   hasRow: boolean;
   updatedAt: string | null;
+  /** «AI нягтлан»: мэдлэгийн сангийн уншилт сүүлийн 30 хоногт (core-ийн хуучин хувилбарт 0). */
+  knowledgeReads30d: number;
+  lastKnowledgeReadAt: string | null;
+  /** ChatGPT / Claude-оос OAuth-оор холбосон тоо (0 = холбоогүй; хуучин core-д 0). */
+  oauthConnections: number;
+  lastConnectorUseAt: string | null;
 };
 
 /** PUT /api/platform/subscriptions body (actor-гүй). */

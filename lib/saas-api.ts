@@ -73,6 +73,11 @@ export async function listSaasSubscriptions(): Promise<SaasSubscriptionRow[]> {
     pricePerSeatMnt: row.pricePerSeatMnt ?? null,
     pricePerSeatOverrideMnt: row.pricePerSeatOverrideMnt ?? null,
     monthlyAmountMnt: row.monthlyAmountMnt ?? null,
+    // «AI нягтлан»-ы хэрэглээ — хуучин core-д талбар байхгүй → 0 / null (тоо ЗОХИОХГҮЙ)
+    knowledgeReads30d: row.knowledgeReads30d ?? 0,
+    lastKnowledgeReadAt: row.lastKnowledgeReadAt ?? null,
+    oauthConnections: row.oauthConnections ?? 0,
+    lastConnectorUseAt: row.lastConnectorUseAt ?? null,
   }));
 }
 

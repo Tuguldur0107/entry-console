@@ -33,6 +33,7 @@ export const Icons = {
   check: mapped("approve"),
   logout: mapped("power"),
   activity: mapped("movement"),
+  ai: mapped("ai"),
   billing: mapped("cash"),
   download: mapped("download"),
   arrowLeft: mapped("arrowLeft"),

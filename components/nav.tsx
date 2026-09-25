@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/customers", label: "Харилцагчид", icon: Icons.users },
   { href: "/customers/new", label: "Харилцагч нэмэх", icon: Icons.plus, exact: true },
   { href: "/subscriptions", label: "SaaS байгууллагууд", icon: Icons.activity },
+  { href: "/ai-accountant", label: "AI нягтлан", icon: Icons.ai },
   { href: "/beacons", label: "Илрүүлэлт", icon: Icons.alert },
   { href: "/settings", label: "Тохиргоо, шалгалт", icon: Icons.settings },
 ];
