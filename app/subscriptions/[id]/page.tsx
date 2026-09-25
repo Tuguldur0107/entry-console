@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BillingPaymentsGrid } from "@/components/grids/billing-payments-grid";
 import { MembersGrid } from "@/components/grids/members-grid";
 import { SupportAccessSection } from "@/components/support-access";
 import { SubscriptionForm } from "@/components/subscription-form";
@@ -10,6 +11,7 @@ import { config } from "@/lib/config";
 import {
   getSaasOrgDetail,
   getSaasSubscription,
+  listSaasBillingPayments,
   saasApiConfigured,
   SaasApiError,
 } from "@/lib/saas-api";
@@ -20,6 +22,7 @@ import {
   profileGaps,
   type SaasOrgDetail,
 } from "@/lib/saas-orgs";
+import { paidAmountOf, type SaasBillingPayment } from "@/lib/saas-billing";
 import {
   describeSaasDeadline,
   describeSaasSeats,
@@ -67,6 +70,15 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
   } catch (caught) {
     detailError = caught instanceof Error ? caught.message : String(caught);
   }
+  // QPay төлбөр — core-ийн хуучин хувилбарт зам байхгүй бол хоосон (алдаа биш).
+  let payments: SaasBillingPayment[] = [];
+  let paymentsError: string | null = null;
+  try {
+    payments = await listSaasBillingPayments({ organizationId: id, limit: 50 });
+  } catch (caught) {
+    paymentsError = caught instanceof Error ? caught.message : String(caught);
+  }
+  const paidTotal = payments.filter((p) => p.status === "paid").reduce((sum, p) => sum + paidAmountOf(p), 0);
 
   const deadline = describeSaasDeadline(row);
   const seats = describeSaasSeats(row);
@@ -112,6 +124,19 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
               />
             </Section>
           ) : null}
+
+          <Section
+            title="QPay төлбөр"
+            sub={payments.length ? `${payments.length} нэхэмжлэх · нийт төлсөн ${fmtMnt(paidTotal)}` : "Багцаа app.entry.mn дээр өөрөө төлсөн түүх"}
+          >
+            {paymentsError ? (
+              <p className="notice notice-warning">{paymentsError}</p>
+            ) : payments.length === 0 ? (
+              <p className="text-sm text-text-3">Төлбөр хийгээгүй.</p>
+            ) : (
+              <BillingPaymentsGrid rows={payments} showOrg={false} />
+            )}
+          </Section>
 
           {detail ? (
             <Section title="Гишүүд" sub={`${members.length} хэрэглэгч`}>
@@ -237,6 +262,23 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
                 <Row label="Ажилтан">{detail.usage.employees}</Row>
                 <Row label="API token">{detail.usage.apiTokens}</Row>
                 <Row label="Хаагдсан сар">{detail.usage.closedPeriods}</Row>
+              </dl>
+            </Section>
+          ) : null}
+
+          {detail?.aiAccountant ? (
+            <Section title="AI нягтлан" sub="Мэдлэгийн сан + ChatGPT / Claude холболт">
+              <dl className="space-y-2 text-sm">
+                <Row label="Уншилт (30 хоног)">{detail.aiAccountant.knowledgeReads30d}</Row>
+                <Row label="Сүүлд уншсан">{fmtDate(detail.aiAccountant.lastKnowledgeReadAt)}</Row>
+                <Row label="Холболт (OAuth)">
+                  {detail.aiAccountant.oauthConnections === 0 ? (
+                    <span className="text-warning">холбоогүй</span>
+                  ) : (
+                    detail.aiAccountant.oauthConnections
+                  )}
+                </Row>
+                <Row label="Сүүлд ашигласан">{fmtDate(detail.aiAccountant.lastConnectorUseAt)}</Row>
               </dl>
             </Section>
           ) : null}

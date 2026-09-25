@@ -54,6 +54,7 @@ export default async function SubscriptionsPage({
         title="SaaS байгууллагууд"
         sub="Үндсэн SaaS сервис дээрх байгууллага бүрийн багц, статус, суудал, хугацаа. Байгууллагын НЭР дээр дарж дэлгэрэнгүйг нь (гишүүд, тохиргоо, хэрэглээ) харж, дэмжлэгийн хандалтаар доторх нь орно."
       >
+        <Link href="/subscriptions/payments" className="btn btn-sm">QPay төлбөрүүд</Link>
         <Link href="/subscriptions/pricing" className="btn btn-sm">Багцын үнэ</Link>
       </PageHeader>
 
