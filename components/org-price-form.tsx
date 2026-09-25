@@ -1,6 +1,9 @@
 "use client";
 
+import type { ColDef } from "ag-grid-community";
 import { useActionState, useState } from "react";
+
+import { DataGrid } from "@/components/datagrid/data-grid";
 
 import { saveOrgPriceAction } from "@/lib/actions";
 import {
@@ -34,41 +37,24 @@ export function OrgPriceSection({ rows }: { rows: SaasSubscriptionRow[] }) {
           Тусгай үнэтэй байгууллага алга — бүгд багцынхаа үнээр тооцогдож байна.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Байгууллага</th>
-                <th>Багц</th>
-                <th>Суудал</th>
-                <th>Тусгай үнэ</th>
-                <th>Сарын дүн</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {special.map((row) => (
-                <tr key={row.organizationId}>
-                  <td className="font-medium">{row.orgName}</td>
-                  <td>{SAAS_PLAN_LABELS[row.planId] ?? row.planId}</td>
-                  <td>{row.seats === null ? "default" : row.seats}</td>
-                  <td>{priceLabel(row.pricePerSeatOverrideMnt)}</td>
-                  <td>{row.monthlyAmountMnt === null ? "—" : fmtMnt(row.monthlyAmountMnt)}</td>
-                  <td className="text-right">
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      disabled={pending}
-                      onClick={() => setSelected(row.organizationId)}
-                    >
-                      Формд сонгох
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          rows={special}
+          columns={specialColumns(pending, setSelected)}
+          getRowId={(row) => row.organizationId}
+          rowHref={(row) => `/subscriptions/${row.organizationId}`}
+          ariaLabel="Тусгай үнэтэй байгууллагууд"
+          card={(row) => ({
+            title: row.orgName,
+            subtitle: SAAS_PLAN_LABELS[row.planId] ?? row.planId,
+            corner: <span className="font-medium text-text-1">{priceLabel(row.pricePerSeatOverrideMnt)}</span>,
+            meta: `суудал ${row.seats ?? "багцаар"} · сарын дүн ${row.monthlyAmountMnt === null ? "—" : fmtMnt(row.monthlyAmountMnt)}`,
+            actions: (
+              <button type="button" className="btn btn-sm" disabled={pending} onClick={() => setSelected(row.organizationId)}>
+                Формд сонгох
+              </button>
+            ),
+          })}
+        />
       )}
 
       <form action={action} className="space-y-4">
@@ -115,4 +101,28 @@ export function OrgPriceSection({ rows }: { rows: SaasSubscriptionRow[] }) {
       </form>
     </div>
   );
+}
+
+function specialColumns(pending: boolean, select: (id: string) => void): ColDef<SaasSubscriptionRow>[] {
+  return [
+    { headerName: "Байгууллага", field: "orgName", minWidth: 200, flex: 2, cellClass: "font-medium" },
+    { headerName: "Багц", field: "planId", minWidth: 120, valueFormatter: ({ value }) => SAAS_PLAN_LABELS[value as SaasSubscriptionRow["planId"]] ?? value },
+    { headerName: "Суудал", field: "seats", minWidth: 100, valueFormatter: ({ value }) => (value === null ? "багцаар" : String(value)) },
+    { headerName: "Тусгай үнэ", field: "pricePerSeatOverrideMnt", minWidth: 130, type: "rightAligned", valueFormatter: ({ value }) => priceLabel(value) },
+    { headerName: "Сарын дүн", field: "monthlyAmountMnt", minWidth: 130, type: "rightAligned", valueFormatter: ({ value }) => (value === null ? "—" : fmtMnt(value)) },
+    {
+      headerName: "",
+      colId: "actions",
+      sortable: false,
+      resizable: false,
+      minWidth: 140,
+      maxWidth: 150,
+      cellRenderer: ({ data }: { data?: SaasSubscriptionRow }) =>
+        data ? (
+          <button type="button" className="btn btn-sm" disabled={pending} onClick={() => select(data.organizationId)}>
+            Формд сонгох
+          </button>
+        ) : null,
+    },
+  ];
 }

@@ -82,6 +82,27 @@ export function ensureSchema(): Promise<void> {
         // унтраасан байж болно; түүнийг нь чимээгүй буцааж асаахгүй). Хуучин
         // харилцагчдыг «Бүгдэд асаах» товчоор нэг дор шилжүүлнэ.
         `alter table "customers" alter column "auto_sync" set default true`,
+        // Илрүүлэлтийн дохио — урьд нь зөвхөн `db:push`-ээр үүсдэг байсан тул
+        // ensure-ээр л асдаг шинэ орчинд /beacons "relation does not exist" гэж унадаг байв.
+        `create table if not exists "beacons" (
+          "id" uuid primary key default gen_random_uuid(),
+          "instance_id" text not null,
+          "app_url" text,
+          "verdict" text not null,
+          "license_slug" text,
+          "licensed_url" text,
+          "origin_slug" text,
+          "origin_repo" text,
+          "matched_customer_id" uuid references "customers"("id") on delete set null,
+          "version" text,
+          "sha" text,
+          "node_env" text,
+          "ip" text,
+          "alerted_at" timestamptz,
+          "first_seen_at" timestamptz not null default now(),
+          "last_seen_at" timestamptz not null default now(),
+          "hit_count" integer not null default 1
+        )`,
       ])
         await db.execute(sql.raw(ddl));
     })().catch((error) => {

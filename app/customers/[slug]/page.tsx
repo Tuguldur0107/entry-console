@@ -26,7 +26,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
   const row = await getCustomerBySlug(slug);
   if (!row) notFound();
   if (isRequestStatus(row.status)) return <RequestPage c={row} />;
-  const { latest, customer } = await loadCustomerDetail(row);
+  const { latest, customer, githubErrors } = await loadCustomerDetail(row);
+  const githubDown = githubErrors.length > 0;
   const c = customer.customer;
   const repo = customer.repo;
   const repoUrl = repo?.htmlUrl ?? `https://github.com/${c.githubRepo}`;
@@ -64,7 +65,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
         </p>
       </div>
 
-      {!repo && c.status === "provisioning" && (
+      {githubDown && (
+        <div className="notice notice-danger" role="alert">
+          <strong>GitHub хүрэхгүй байна</strong> — repo, sync, collaborator-ийн мэдээлэл түр харагдахгүй; харилцагчийг устгах түр хаалттай.{" "}
+          <Link href="/settings" className="underline">Тохиргоо, шалгалт</Link>
+          <ul className="mt-1 list-disc pl-5">{githubErrors.map((e) => <li key={e}>{e}</li>)}</ul>
+        </div>
+      )}
+      {!githubDown && !repo && c.status === "provisioning" && (
         <div className="notice notice-warning">
           <strong>Repo үүсгэж байна.</strong>{" "}
           {customer.provisionRun ? (
@@ -79,11 +87,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
           <strong>Repo үүссэн ч хоосон.</strong> Core түүх push хийгдээгүй — core repo-ийн Actions → «Provision customer» → Run workflow (slug: <span className="mono">{c.slug}</span>) дахин ажиллуулна; repo-г устгах шаардлагагүй.
         </div>
       )}
-      {!repo && c.status !== "provisioning" && (
+      {!githubDown && !repo && c.status !== "provisioning" && (
         <div className="notice notice-danger">GitHub дээр <span className="mono">{c.githubRepo}</span> олдсонгүй (устгагдсан эсвэл token хандахгүй).</div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Section title="Бүртгэл, гэрээ, төлбөр" sub="Энд хадгалагдана; repo-д нөлөөлөхгүй (Deploy хаягаас бусад)">
             <CustomerEditForm customer={c} />
@@ -216,14 +224,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
 
           <Section title="Харилцагчид өгөх мэдээлэл" sub="Хуулж илгээнэ">
             <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between gap-2"><span className="mono truncate">{repoUrl}</span><CopyButton text={repoUrl} /></div>
-              {c.appUrl && <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl}</span><CopyButton text={c.appUrl} /></div>}
+              <div className="flex items-center justify-between gap-2"><span className="mono min-w-0 truncate">{repoUrl}</span><CopyButton text={repoUrl} /></div>
+              {c.appUrl && <div className="flex items-center justify-between gap-2"><span className="mono min-w-0 truncate">{c.appUrl}</span><CopyButton text={c.appUrl} /></div>}
               {c.contactEmail && c.appUrl && (
                 <a className="btn btn-sm" href={`mailto:${c.contactEmail}?subject=${encodeURIComponent(`Entry Accounting — ${c.displayName} системийн хаяг`)}&body=${encodeURIComponent(`Сайн байна уу, ${c.contactName ?? ""}.\n\n${c.displayName}-ийн Entry Accounting систем бэлэн боллоо:\n${c.appUrl}\n\nДээрх хаягаар орж «Бүртгүүлэх» дарж анхны админ хэрэглэгчээ үүсгэнэ үү.\n`)}`}>
                   Хаягийг имэйлээр илгээх
                 </a>
               )}
-              <div className="flex items-center justify-between gap-2"><span className="mono truncate">{c.appUrl ?? "https://<app>"}/api/mcp</span><CopyButton text={`${c.appUrl ?? "https://<app>"}/api/mcp`} label="MCP URL" /></div>
+              <div className="flex items-center justify-between gap-2"><span className="mono min-w-0 truncate">{c.appUrl ?? "https://<app>"}/api/mcp</span><CopyButton text={`${c.appUrl ?? "https://<app>"}/api/mcp`} label="MCP URL" /></div>
             </div>
           </Section>
 
@@ -232,7 +240,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
           </Section>
 
           <Section title="Аюултай бүс" sub="Гэрээ дууссан, эсвэл туршилтын харилцагчийг цэвэрлэх">
-            <DestroyForm slug={slug} items={destroyItems} warnings={plan.warnings} />
+            {githubDown ? (
+              <p className="notice notice-warning">GitHub хүрэхгүй үед устгахгүй — repo байгаа эсэх тодорхойгүй тул устгалт repo-г өнчин үлдээж болзошгүй.</p>
+            ) : (
+              <DestroyForm slug={slug} items={destroyItems} warnings={plan.warnings} />
+            )}
           </Section>
         </div>
       </div>
@@ -263,12 +275,12 @@ async function RequestPage({ c }: { c: Customer }) {
         <div className="notice notice-warning"><strong>Татгалзсан.</strong> {c.decisionNote ?? "Шалтгаан бичээгүй."} Доорх маягтаар дахин батлах боломжтой.</div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Section title={c.status === "pending" ? "Батлах" : "Дахин батлах"} sub="Батлахад core repo дээр provision workflow → GitHub repo → (автомат бол) Railway app + Postgres. Хүсэлт гаргагчид та өөрөө хаягийг нь илгээнэ.">
             <ApproveForm customer={c} latestTag={latest?.tagName ?? null} owner={config.owner} railwayOn={railwayConfigured()} />
           </Section>
-          <Section title="Түүх">
+          {events.length > 0 && <Section title="Түүх">
             <ul className="divide-y divide-border text-sm">
               {events.map((e) => (
                 <li key={e.id} className="flex gap-3 py-2.5">
@@ -278,10 +290,11 @@ async function RequestPage({ c }: { c: Customer }) {
                 </li>
               ))}
             </ul>
-          </Section>
+          </Section>}
         </div>
-        <div className="space-y-4">
-          <Section title="Хүсэлтийн мэдээлэл">
+        {/* Утсан дээр (`contents`) хүсэлтийн агуулга ЭХЭНД — батлахаас өмнө уншина */}
+        <div className="contents lg:block lg:space-y-4">
+          <Section title="Хүсэлтийн мэдээлэл" className="order-first lg:order-none">
             <dl className="space-y-2 text-sm">
               <Row k="Хүссэн код" v={<span className="mono">entry-{c.slug}</span>} />
               <Row k="ТТД" v={c.registerNo ?? "—"} />
@@ -327,8 +340,8 @@ function DeployStatus({ status, at }: { status: string | null; at: string | null
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="text-text-3">{k}</dt>
-      <dd className="text-right text-text-1">{v}</dd>
+      <dt className="shrink-0 text-text-3">{k}</dt>
+      <dd className="min-w-0 break-words text-right text-text-1">{v}</dd>
     </div>
   );
 }
