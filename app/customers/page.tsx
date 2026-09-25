@@ -1,10 +1,12 @@
 import Link from "next/link";
 
-import { AutoSyncAllButton, QuickApproveButton } from "@/components/forms";
+import { AutoSyncAllButton } from "@/components/forms";
+import { CustomersGrid } from "@/components/grids/customers-grid";
 import { Icons } from "@/components/icons";
-import { AutoSyncBadge, EmptyState, HealthBadge, PLAN_LABELS, PageHeader, RunBadge, STATUS_LABELS, StatusBadge, fmtDate, fmtMnt } from "@/components/ui";
+import { EmptyState, FilterChips, PageHeader, SearchForm } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { toCustomerGridRow } from "@/lib/customer-grid";
 import { autoSyncStats, filterCustomers, loadDashboard } from "@/lib/customers";
 
 export const dynamic = "force-dynamic";
@@ -19,11 +21,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const signupUrl = `${config.self.publicUrl ?? ""}/signup`;
   const rows = filterCustomers(customers, q, status);
   const sync = autoSyncStats(customers.map(({ customer: c }) => c));
+  const pending = customers.filter(({ customer: c }) => c.status === "pending").length;
   const csv = ["slug,name,register_no,contact,email,phone,status,plan,monthly_fee,repo,app_url,created_at",
     ...customers.map(({ customer: c }) => [c.slug, c.displayName, c.registerNo, c.contactName, c.contactEmail, c.contactPhone, c.status, c.plan, c.monthlyFee, c.githubRepo, c.appUrl, c.createdAt.toISOString()].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
 
   return (
     <div className="space-y-4">
+      <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл · авто sync ${sync.on}/${sync.eligible}`}>
+        <AutoSyncAllButton off={sync.off.length} />
+        <a title="Бүх харилцагч (шүүлтүүрээс үл хамааран)" href={`data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + csv)}`} download="entry-customers.csv" className="btn btn-sm"><Icons.download className="h-4 w-4" /> CSV</a>
+        <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>
+      </PageHeader>
       {deleted && <p className="notice notice-success">«{deleted}» устлаа — Railway service, GitHub repo (байсан бол), console бүртгэл.</p>}
       {status === "pending" && <p className="notice notice-info">Нээлттэй бүртгүүлэх хуудас: <span className="mono">{signupUrl}</span> — хүсэлт энд «Хүсэлт» төлөвтэй орж ирнэ; батлахад repo + Railway автоматаар үүснэ.</p>}
       {sync.off.length > 0 && (
@@ -32,58 +40,30 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           Авто sync асаавал шалгалт (tsc/lint/тест) давсан PR автоматаар merge хийгдэнэ; conflict гарвал хэвээрээ хүлээнэ.
         </p>
       )}
-      <PageHeader title="Харилцагчид" sub={`${customers.length} бүртгэл · авто sync ${sync.on}/${sync.eligible}`}>
-        <AutoSyncAllButton off={sync.off.length} />
-        <a href={`data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + csv)}`} download="entry-customers.csv" className="btn btn-sm"><Icons.download className="h-4 w-4" /> CSV</a>
-        <Link href="/customers/new" className="btn btn-primary"><Icons.plus className="h-4 w-4" /> Харилцагч нэмэх</Link>
-      </PageHeader>
 
-      <form className="flex flex-wrap items-center gap-2" method="get">
-        <div className="relative min-w-64 flex-1">
-          <Icons.search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-text-3" />
-          <input name="q" defaultValue={q ?? ""} className="input pl-9" placeholder="Нэр, код, ТТД, имэйл, repo…" />
-        </div>
-        <input type="hidden" name="status" value={status} />
-        <button className="btn" type="submit">Хайх</button>
-      </form>
-      <div className="flex flex-wrap gap-1.5">
-        {FILTERS.map(([k, label]) => {
-          const n = k === "all" ? customers.length : customers.filter((c) => c.customer.status === k).length;
-          return (
-            <Link key={k} href={`/customers?status=${k}${q ? `&q=${encodeURIComponent(q)}` : ""}`} className={`badge badge-plain ${status === k ? "badge-info" : "badge-muted"}`}>
-              {label} <span className="opacity-70">{n}</span>
-            </Link>
-          );
-        })}
-      </div>
+      <SearchForm q={q} placeholder="Нэр, код, ТТД, имэйл, repo…" hidden={{ status }} />
+      <FilterChips
+        active={status}
+        items={FILTERS.map(([k, label]) => ({
+          value: k,
+          label,
+          href: `/customers?status=${k}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+          count: k === "all" ? customers.length : customers.filter((c) => c.customer.status === k).length,
+        }))}
+      />
 
-      <div className="card overflow-x-auto">
-        {rows.length === 0 ? (
+      {rows.length === 0 ? (
+        <div className="card">
           <EmptyState title="Илэрц алга" sub={q ? `«${q}» гэсэн хайлтад тохирох харилцагч байхгүй` : "Энэ төлөвт харилцагч алга"} />
-        ) : (
-          <table className="table">
-            <thead><tr><th>Харилцагч</th><th>Төлөв</th><th>Багц</th><th>Deploy</th><th>Sync</th><th>Авто sync</th><th>Холбоо барих</th><th>Үүссэн</th></tr></thead>
-            <tbody>
-              {rows.map(({ customer: c, repo, health, behind, lastSync }) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link href={`/customers/${c.slug}`} className="font-medium hover:underline">{c.displayName}</Link>
-                    <div className="mono text-text-3">{repo?.fullName ?? c.githubRepo}</div>
-                  </td>
-                  <td><StatusBadge status={c.status} />{c.status === "pending" && <div className="mt-1"><QuickApproveButton slug={c.slug} /></div>}</td>
-                  <td className="text-text-2">{PLAN_LABELS[c.plan]}{Number(c.monthlyFee) > 0 && <div className="text-xs text-text-3">{fmtMnt(c.monthlyFee)}/сар</div>}</td>
-                  <td><HealthBadge health={health} behind={behind} latest={latest?.tagName ?? null} /></td>
-                  <td><RunBadge run={lastSync} /></td>
-                  <td><AutoSyncBadge on={c.autoSync} access={c.upstreamAccess} status={c.status} /></td>
-                  <td className="text-text-2">{c.contactName ?? "—"}{c.contactPhone && <div className="text-xs text-text-3">{c.contactPhone}</div>}</td>
-                  <td className="text-text-3">{fmtDate(c.createdAt, false)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      <p className="text-xs text-text-3">Төлөв: {Object.values(STATUS_LABELS).join(" · ")}</p>
+        </div>
+      ) : (
+        <CustomersGrid rows={rows.map((row) => toCustomerGridRow(row, latest?.tagName ?? null))} />
+      )}
+      {pending > 0 && status !== "pending" ? (
+        <p className="text-xs text-text-3">
+          {pending} бүртгүүлэх хүсэлт хүлээгдэж байна — батлахаас өмнө <Link href="/customers?status=pending" className="underline">хүсэлтийг</Link> нээж код, багцыг шалгана.
+        </p>
+      ) : null}
     </div>
   );
 }

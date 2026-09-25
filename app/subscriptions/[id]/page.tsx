@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { MembersGrid } from "@/components/grids/members-grid";
 import { SupportAccessSection } from "@/components/support-access";
 import { SubscriptionForm } from "@/components/subscription-form";
 import { fmtDate, fmtMnt, PageHeader, Section } from "@/components/ui";
@@ -13,7 +14,6 @@ import {
   SaasApiError,
 } from "@/lib/saas-api";
 import {
-  MEMBER_ROLE_LABELS,
   byMemberRole,
   isOrgActive,
   moduleLabel,
@@ -90,7 +90,7 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
 
       {detailError ? <p className="notice notice-warning">Дэлгэрэнгүй уншигдсангүй: {detailError}</p> : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
           <Section
             title="Багц засах"
@@ -118,42 +118,14 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
               {members.length === 0 ? (
                 <p className="text-sm text-text-3">Гишүүн алга.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>И-мэйл</th>
-                        <th>Нэр</th>
-                        <th>Роль</th>
-                        <th>И-мэйл баталгаажсан</th>
-                        <th>Элссэн</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {members.map((member) => (
-                        <tr key={member.userId}>
-                          <td className="mono">{member.email ?? "—"}</td>
-                          <td>{member.name ?? "—"}</td>
-                          <td>{MEMBER_ROLE_LABELS[member.role] ?? member.role}</td>
-                          <td>
-                            {member.emailVerified ? (
-                              <span className="badge badge-success">Тийм</span>
-                            ) : (
-                              <span className="badge badge-warning">Үгүй</span>
-                            )}
-                          </td>
-                          <td>{fmtDate(member.joinedAt, false)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <MembersGrid members={members} />
               )}
             </Section>
           ) : null}
         </div>
 
-        <div className="space-y-4">
+        {/* Утсан дээр төлөв ЭХЭНД (ихэвчлэн харах гэж нээдэг), десктопод баруун баганад */}
+        <div className="order-first space-y-4 lg:order-none">
           <Section
             title="Одоогийн төлөв"
             sub={row.hasRow ? `Сүүлд шинэчилсэн ${fmtDate(row.updatedAt)}` : "Тохиргооны мөргүй — default-оор ажиллаж байна"}
@@ -269,17 +241,19 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
             </Section>
           ) : null}
 
-          <Section title="Дүрэм" sub="core: docs/billing/00-proposal.md">
-            <ul className="list-disc space-y-1 pl-4 text-xs text-text-3">
-              <li>Trial 14 хоног — дуусахад зөвхөн унших; <b>Идэвхтэй</b> + багц сонговол нээгдэнэ.</li>
-              <li><b>Төлбөр хоцорсон</b> → 14 хоногийн grace (үе дуусах огнооноос), дараа нь зөвхөн унших.</li>
-              <li><b>Түр зогсоосон / Цуцлагдсан</b> → тэр даруй зөвхөн унших (өгөгдөл устахгүй).</li>
-              <li>Суудал хоосон = багцын default; урилга суудлаас хэтэрвэл апп татгалзана.</li>
-              <li>overrides: <span className="mono">{`{"features":{"api.rest":true},"limits":{"companies":3}}`}</span> — багцаас ялгаатай хэсэг л.</li>
-            </ul>
-          </Section>
         </div>
       </div>
+
+      {/* Утсан дээр маягтын ДАРАА (төлөвийн багана эхэнд гардаг тул) */}
+      <Section title="Дүрэм" sub="core: docs/billing/00-proposal.md">
+        <ul className="list-disc space-y-1 pl-4 text-xs text-text-3">
+          <li>Trial 14 хоног — дуусахад зөвхөн унших; <b>Идэвхтэй</b> + багц сонговол нээгдэнэ.</li>
+          <li><b>Төлбөр хоцорсон</b> → 14 хоногийн grace (үе дуусах огнооноос), дараа нь зөвхөн унших.</li>
+          <li><b>Түр зогсоосон / Цуцлагдсан</b> → тэр даруй зөвхөн унших (өгөгдөл устахгүй).</li>
+          <li>Суудал хоосон = багцын default; урилга суудлаас хэтэрвэл апп татгалзана.</li>
+          <li>overrides: <span className="mono">{`{"features":{"api.rest":true},"limits":{"companies":3}}`}</span> — багцаас ялгаатай хэсэг л.</li>
+        </ul>
+      </Section>
     </div>
   );
 }
@@ -287,8 +261,8 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="text-text-3">{label}</dt>
-      <dd className="text-right">{children}</dd>
+      <dt className="shrink-0 text-text-3">{label}</dt>
+      <dd className="min-w-0 break-words text-right">{children}</dd>
     </div>
   );
 }

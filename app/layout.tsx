@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import Link from "next/link";
 
 import { Icons } from "@/components/icons";
+import { MobileNav } from "@/components/mobile-nav";
 import { Nav } from "@/components/nav";
 import { THEME_INIT_SCRIPT, ThemeToggle } from "@/components/theme-toggle";
 import { hasSession } from "@/lib/auth";
@@ -50,11 +51,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </div>
             </aside>
             <div className="flex min-w-0 flex-1 flex-col">
-              <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface/90 px-4 py-2.5 backdrop-blur md:px-6">
-                <Link href="/" className="text-sm font-semibold md:hidden">Entry Console</Link>
+              <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-surface/90 px-3 py-2 backdrop-blur md:px-6 md:py-2.5">
                 <div className="md:hidden">
-                  <MobileNav />
+                  <MobileNav footer={<>Repo эзэн: <span className="mono text-text-2">{config.owner}</span></>} />
                 </div>
+                <Link href="/" className="text-sm font-semibold md:hidden">
+                  Entry <span className="text-text-3">Console</span>
+                </Link>
                 <div className="ml-auto flex items-center gap-1">
                   <ThemeToggle />
                   <form action={logout}>
@@ -65,7 +68,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </form>
                 </div>
               </header>
-              <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-6">{children}</main>
+              <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-5 md:px-6 md:py-6">{children}</main>
             </div>
           </div>
         ) : (
@@ -79,17 +82,5 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         )}
       </body>
     </html>
-  );
-}
-
-function MobileNav() {
-  return (
-    <div className="flex gap-1 text-xs">
-      <Link href="/" className="btn btn-ghost btn-sm">Самбар</Link>
-      <Link href="/customers" className="btn btn-ghost btn-sm">Харилцагчид</Link>
-      <Link href="/subscriptions" className="btn btn-ghost btn-sm">Багц</Link>
-      <Link href="/beacons" className="btn btn-ghost btn-sm">Илрүүлэлт</Link>
-      <Link href="/settings" className="btn btn-ghost btn-sm">Тохиргоо</Link>
-    </div>
   );
 }

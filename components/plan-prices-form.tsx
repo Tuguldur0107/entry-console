@@ -1,6 +1,9 @@
 "use client";
 
+import type { ColDef } from "ag-grid-community";
 import { useActionState, useState, useTransition } from "react";
+
+import { DataGrid } from "@/components/datagrid/data-grid";
 
 import { addPlanPriceAction, deletePlanPriceAction } from "@/lib/actions";
 import type { ActionResult } from "@/lib/actions";
@@ -33,38 +36,40 @@ export function CurrentPricesTable({
   defaults: SaasPlanPrices;
   today: string;
 }) {
+  const rows: CurrentPriceRow[] = SAAS_PRICEABLE_PLANS.map((planId) => {
+    const active = currentPeriod(periods, planId, today);
+    return {
+      planId,
+      price: prices[planId] ?? null,
+      from: active?.effectiveFrom ?? null,
+      to: active ? active.effectiveTo ?? "хугацаагүй" : null,
+      source: active ? "тохируулсан үнэ" : `кодын default (${priceLabel(defaults[planId])})`,
+    };
+  });
   return (
-    <div className="overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Багц</th>
-            <th>Өнөөдрийн үнэ</th>
-            <th>Мөрдөж эхэлсэн</th>
-            <th>Дуусах</th>
-            <th>Эх сурвалж</th>
-          </tr>
-        </thead>
-        <tbody>
-          {SAAS_PRICEABLE_PLANS.map((planId) => {
-            const active = currentPeriod(periods, planId, today);
-            return (
-              <tr key={planId}>
-                <td className="font-medium">{SAAS_PLAN_LABELS[planId]}</td>
-                <td>{priceLabel(prices[planId])}</td>
-                <td className="mono text-text-2">{active?.effectiveFrom ?? "—"}</td>
-                <td className="mono text-text-2">{active ? active.effectiveTo ?? "хугацаагүй" : "—"}</td>
-                <td className="text-text-3">
-                  {active ? "тохируулсан үнэ" : `кодын default (${priceLabel(defaults[planId])})`}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataGrid
+      rows={rows}
+      columns={CURRENT_COLUMNS}
+      getRowId={(row) => row.planId}
+      ariaLabel="Өнөөдрийн үнэ"
+      card={(row) => ({
+        title: SAAS_PLAN_LABELS[row.planId],
+        corner: <span className="font-medium text-text-1">{priceLabel(row.price)}</span>,
+        meta: `${row.from ? `${row.from} … ${row.to}` : "үе алга"} · ${row.source}`,
+      })}
+    />
   );
 }
+
+type CurrentPriceRow = { planId: SaasPlanId; price: number | null; from: string | null; to: string | null; source: string };
+
+const CURRENT_COLUMNS: ColDef<CurrentPriceRow>[] = [
+  { headerName: "Багц", field: "planId", minWidth: 180, flex: 2, cellClass: "font-medium", valueFormatter: ({ value }) => SAAS_PLAN_LABELS[value as SaasPlanId] ?? value },
+  { headerName: "Өнөөдрийн үнэ", field: "price", minWidth: 140, type: "rightAligned", valueFormatter: ({ value }) => priceLabel(value) },
+  { headerName: "Мөрдөж эхэлсэн", field: "from", minWidth: 130, cellClass: "mono", valueFormatter: ({ value }) => value ?? "—" },
+  { headerName: "Дуусах", field: "to", minWidth: 120, cellClass: "mono", valueFormatter: ({ value }) => value ?? "—" },
+  { headerName: "Эх сурвалж", field: "source", minWidth: 200, flex: 2 },
+];
 
 /** Шинэ үнийн үе — багц, үнэ, мөрдөх хугацаа. */
 export function AddPlanPriceForm({ today }: { today: string }) {
@@ -125,82 +130,84 @@ export function PlanPriceHistory({
   const [pending, startTransition] = useTransition();
   if (groups.length === 0)
     return <p className="text-sm text-text-3">Тохируулсан үнэ алга — бүх багц кодын default-аар ажиллаж байна.</p>;
+  const rows = groups.flatMap((group) => group.periods);
+  const remove = (period: SaasPlanPricePeriod) =>
+    startTransition(async () => {
+      const status = periodStatus(period, today);
+      // Мөрдөж буй / дууссан үеийг устгавал ТЭР хугацааны сарын дүн кодын default-аар
+      // дахин бодогдоно (түүх өөрчлөгдөнө) — зөвхөн буруу оруулсныг засахад.
+      const warning =
+        status.label === "Ирээдүйд"
+          ? "Ирээдүйн энэ үнийн үеийг устгах уу?"
+          : `«${status.label}» үеийг устгавал ${period.effectiveFrom}-с хойшхи сарын дүн өөр үнээр (эсвэл кодын default-аар) дахин бодогдоно — өнгөрсөн түүх өөрчлөгдөнө.\n\nЗөвхөн БУРУУ оруулсан үнийг засах бол устгана уу. Үнэ өөрчлөх бол шинэ үе нэмнэ. Устгах уу?`;
+      if (!confirm(warning)) return;
+      setResult(await deletePlanPriceAction(period.id));
+    });
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Notice result={result} />
-      {groups.map((group) => (
-        <PlanGroup
-          key={group.planId}
-          planId={group.planId}
-          periods={group.periods}
-          today={today}
-          pending={pending}
-          onDelete={(id) =>
-            startTransition(async () => {
-              if (!confirm("Энэ үнийн үеийг устгах уу?")) return;
-              setResult(await deletePlanPriceAction(id));
-            })
-          }
-        />
-      ))}
+      <DataGrid
+        rows={rows}
+        columns={historyColumns(today, pending, remove)}
+        getRowId={(row) => row.id}
+        ariaLabel="Үнийн түүх"
+        card={(row) => {
+          const status = periodStatus(row, today);
+          return {
+            title: SAAS_PLAN_LABELS[row.planId],
+            subtitle: `${row.effectiveFrom} … ${row.effectiveTo ?? "хугацаагүй"}`,
+            corner: <span className="font-medium text-text-1">{priceLabel(row.pricePerSeatMnt)}</span>,
+            badges: <span className={`badge ${status.cls}`}>{status.label}</span>,
+            meta: row.note,
+            actions: (
+              <button type="button" className="btn btn-danger btn-sm" disabled={pending} onClick={() => remove(row)}>
+                Устгах
+              </button>
+            ),
+          };
+        }}
+      />
     </div>
   );
 }
 
-function PlanGroup({
-  planId,
-  periods,
-  today,
-  pending,
-  onDelete,
-}: {
-  planId: SaasPlanId;
-  periods: SaasPlanPricePeriod[];
-  today: string;
-  pending: boolean;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div>
-      <h3 className="card-title mb-2">{SAAS_PLAN_LABELS[planId]}</h3>
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Мөрдөх хугацаа</th>
-              <th>Үнэ</th>
-              <th>Төлөв</th>
-              <th>Тэмдэглэл</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {periods.map((period) => {
-              const status = periodStatus(period, today);
-              return (
-                <tr key={period.id}>
-                  <td className="mono text-text-2">
-                    {period.effectiveFrom} … {period.effectiveTo ?? "хугацаагүй"}
-                  </td>
-                  <td>{priceLabel(period.pricePerSeatMnt)}</td>
-                  <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
-                  <td className="text-text-3">{period.note ?? "—"}</td>
-                  <td className="text-right">
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      disabled={pending}
-                      onClick={() => onDelete(period.id)}
-                    >
-                      Устгах
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+function historyColumns(today: string, pending: boolean, remove: (period: SaasPlanPricePeriod) => void): ColDef<SaasPlanPricePeriod>[] {
+  return [
+    { headerName: "Багц", field: "planId", minWidth: 160, flex: 1.5, cellClass: "font-medium", valueFormatter: ({ value }) => SAAS_PLAN_LABELS[value as SaasPlanId] ?? value },
+    {
+      headerName: "Мөрдөх хугацаа",
+      field: "effectiveFrom",
+      minWidth: 210,
+      flex: 2,
+      cellClass: "mono",
+      valueFormatter: ({ data }) => (data ? `${data.effectiveFrom} … ${data.effectiveTo ?? "хугацаагүй"}` : ""),
+    },
+    { headerName: "Үнэ", field: "pricePerSeatMnt", minWidth: 120, type: "rightAligned", valueFormatter: ({ value }) => priceLabel(value) },
+    {
+      headerName: "Төлөв",
+      colId: "status",
+      minWidth: 120,
+      valueGetter: ({ data }) => (data ? periodStatus(data, today).label : ""),
+      cellRenderer: ({ data }: { data?: SaasPlanPricePeriod }) => {
+        if (!data) return null;
+        const status = periodStatus(data, today);
+        return <span className={`badge ${status.cls}`}>{status.label}</span>;
+      },
+    },
+    { headerName: "Тэмдэглэл", field: "note", minWidth: 160, flex: 2, valueFormatter: ({ value }) => value ?? "—" },
+    {
+      headerName: "",
+      colId: "actions",
+      sortable: false,
+      resizable: false,
+      minWidth: 100,
+      maxWidth: 110,
+      cellRenderer: ({ data }: { data?: SaasPlanPricePeriod }) =>
+        data ? (
+          <button type="button" className="btn btn-danger btn-sm" disabled={pending} onClick={() => remove(data)}>
+            Устгах
+          </button>
+        ) : null,
+    },
+  ];
 }

@@ -36,6 +36,8 @@ export const Icons = {
   billing: mapped("cash"),
   download: mapped("download"),
   arrowLeft: mapped("arrowLeft"),
+  menu: mapped("list"),
+  close: mapped("close"),
   /** Брэндийн лого — Entry-ийн kit-д байхгүй цорын ганц глиф. */
   github: (p: P) => (
     <svg

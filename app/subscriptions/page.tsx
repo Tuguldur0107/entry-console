@@ -1,14 +1,11 @@
 import Link from "next/link";
 
-import { EmptyState, Kpi, PageHeader, Section, fmtMnt } from "@/components/ui";
+import { SubscriptionsGrid } from "@/components/grids/subscriptions-grid";
+import { EmptyState, FilterChips, Kpi, PageHeader, SearchForm, Section, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { listSaasSubscriptions, saasApiConfigured, SaasApiError } from "@/lib/saas-api";
 import {
-  describeSaasDeadline,
-  describeSaasSeats,
   filterSaasRows,
-  SAAS_PLAN_LABELS,
-  SAAS_STATUS_BADGE,
   SAAS_STATUS_LABELS,
   SAAS_STATUSES,
   summarizeRevenue,
@@ -81,27 +78,18 @@ export default async function SubscriptionsPage({
         />
       </div>
 
-      <Section
-        title="Байгууллагууд"
-        sub={`${visible.length} / ${rows.length} · статусаар шүүх, нэр / ТТД / эзний и-мэйлээр хайх`}
-        right={
-          <form className="flex items-center gap-2" method="get">
-            {status ? <input type="hidden" name="status" value={status} /> : null}
-            <input name="q" className="input" placeholder="Хайх…" defaultValue={q} style={{ width: 200 }} />
-            <button className="btn btn-sm" type="submit">Хайх</button>
-          </form>
-        }
-      >
-        <div className="mb-4 flex flex-wrap gap-1.5">
-          {FILTERS.map((filter) => {
-            const active = filter.value === status;
-            const href = `/subscriptions?${new URLSearchParams({ ...(filter.value ? { status: filter.value } : {}), ...(q ? { q } : {}) }).toString()}`;
-            return (
-              <Link key={filter.value || "all"} href={href} className={`btn btn-sm ${active ? "btn-primary" : ""}`} aria-current={active ? "page" : undefined}>
-                {filter.label}
-              </Link>
-            );
-          })}
+      <Section title="Байгууллагууд" sub={`${visible.length} / ${rows.length} · нэр, ТТД, эзний и-мэйлээр хайна`}>
+        <div className="mb-4 space-y-3">
+          <SearchForm q={q} placeholder="Нэр, ТТД, эзний и-мэйл…" hidden={{ status }} className="max-w-md" />
+          <FilterChips
+            active={status}
+            items={FILTERS.map((filter) => ({
+              value: filter.value,
+              label: filter.label,
+              href: `/subscriptions?${new URLSearchParams({ ...(filter.value ? { status: filter.value } : {}), ...(q ? { q } : {}) }).toString()}`,
+              count: filter.value === "" ? rows.length : filterSaasRows(rows, { status: filter.value, q: "" }).length,
+            }))}
+          />
         </div>
         {visible.length === 0 ? (
           <EmptyState
@@ -109,64 +97,7 @@ export default async function SubscriptionsPage({
             sub={rows.length === 0 && !error ? "SaaS сервис дээр бүртгүүлсэн байгууллага энд гарна." : undefined}
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Байгууллага</th>
-                  <th>Эзэн</th>
-                  <th>Багц</th>
-                  <th>Статус</th>
-                  <th>Суудал</th>
-                  <th>Үнэ / сарын дүн</th>
-                  <th>Хугацаа</th>
-                  <th>Trial дуусах</th>
-                  <th>Үе дуусах</th>
-                  <th>Бүртгэсэн</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((row) => {
-                  const deadline = describeSaasDeadline(row);
-                  const seats = describeSaasSeats(row);
-                  return (
-                    <tr key={row.organizationId}>
-                      <td>
-                        <Link href={`/subscriptions/${row.organizationId}`} className="font-medium hover:underline">{row.orgName}</Link>
-                        <div className="mono text-text-3">{row.registryNo ?? "ТТД —"}{row.hasRow ? "" : " · default"}</div>
-                      </td>
-                      <td className="text-text-2">
-                        {row.ownerEmail ?? "—"}
-                        <div className="text-xs text-text-3">{row.memberCount} гишүүн</div>
-                      </td>
-                      <td>{SAAS_PLAN_LABELS[row.planId] ?? row.planId}</td>
-                      <td><span className={`badge ${SAAS_STATUS_BADGE[row.status] ?? "badge-muted"}`}>{SAAS_STATUS_LABELS[row.status] ?? row.status}</span></td>
-                      <td className={seats.over ? "text-danger font-medium" : ""}>{seats.text}</td>
-                      <td>
-                        {row.pricePerSeatMnt === null ? (
-                          <span className="text-text-3">хэлэлцээрээр</span>
-                        ) : (
-                          <>
-                            {fmtMnt(row.pricePerSeatMnt)}
-                            {row.pricePerSeatOverrideMnt !== null ? (
-                              <span className="ml-1 text-xs text-warning">тусгай</span>
-                            ) : null}
-                          </>
-                        )}
-                        <div className="text-xs text-text-3">
-                          {row.monthlyAmountMnt === null ? "сарын дүн —" : `${fmtMnt(row.monthlyAmountMnt)} / сар`}
-                        </div>
-                      </td>
-                      <td className={deadline.tone === "danger" ? "text-danger" : deadline.tone === "warning" ? "text-warning" : "text-text-2"}>{deadline.text}</td>
-                      <td className="mono text-text-2">{row.trialEndsAt ?? "—"}</td>
-                      <td className="mono text-text-2">{row.currentPeriodEnd ?? "—"}</td>
-                      <td className="mono text-text-3">{row.createdAt}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <SubscriptionsGrid rows={visible} />
         )}
       </Section>
     </div>

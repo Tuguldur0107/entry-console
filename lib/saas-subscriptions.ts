@@ -285,7 +285,7 @@ export function describeSaasDeadline(row: SaasSubscriptionRow): { text: string; 
 
 /** Суудал багана: ашигласан / оноосон (эсвэл багцын default). */
 export function describeSaasSeats(row: SaasSubscriptionRow): { text: string; over: boolean } {
-  const paid = row.seats === null ? "default" : String(row.seats);
+  const paid = row.seats === null ? "багцаар" : String(row.seats);
   return { text: `${row.seatsUsed} / ${paid}`, over: row.seats !== null && row.seatsUsed > row.seats };
 }
 

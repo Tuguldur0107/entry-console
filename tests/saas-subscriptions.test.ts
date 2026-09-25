@@ -97,7 +97,7 @@ test("describeSaasDeadline / describeSaasSeats", () => {
   assert.deepEqual(describeSaasDeadline(row({ status: "trialing", daysLeft: 0 })), { text: "Өнөөдөр дуусна", tone: "danger" });
   assert.deepEqual(describeSaasDeadline(row({ status: "trialing", daysLeft: 5 })), { text: "5 хоног (trial)", tone: "warning" });
   assert.deepEqual(describeSaasDeadline(row({ status: "past_due", daysLeft: 12 })), { text: "12 хоног (grace)", tone: "" });
-  assert.deepEqual(describeSaasSeats(row({ seats: null, seatsUsed: 1 })), { text: "1 / default", over: false });
+  assert.deepEqual(describeSaasSeats(row({ seats: null, seatsUsed: 1 })), { text: "1 / багцаар", over: false });
   assert.deepEqual(describeSaasSeats(row({ seats: 1, seatsUsed: 2 })), { text: "2 / 1", over: true });
 });
 

@@ -1,10 +1,12 @@
 import Link from "next/link";
 
 import { AutoSyncAllButton, QuickApproveButton, SyncAllButton } from "@/components/forms";
+import { CustomersGrid } from "@/components/grids/customers-grid";
 import { Icons } from "@/components/icons";
-import { EVENT_LABELS, EmptyState, HealthBadge, Kpi, PageHeader, RunBadge, Section, StatusBadge, fmtAgo, fmtMnt } from "@/components/ui";
+import { EVENT_LABELS, EmptyState, Kpi, PageHeader, RunBadge, Section, fmtAgo, fmtMnt } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { toCustomerGridRow } from "@/lib/customer-grid";
 import { autoSyncStats, computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
 import { isRequestStatus } from "@/lib/db/schema";
 
@@ -69,7 +71,7 @@ export default async function DashboardPage() {
         <Kpi label="Хүрэхгүй deploy" value={String(downCount)} tone={downCount > 0 ? "danger" : "success"} sub="/api/health хариу" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
           <Section title="Анхаарах зүйлс" sub={attention.length === 0 ? "Бүх зүйл хэвийн" : `${attention.length} асуудал`}>
             {attention.length === 0 ? (
@@ -89,25 +91,7 @@ export default async function DashboardPage() {
             {visible.length === 0 ? (
               <EmptyState title="Харилцагч алга" sub="Эхний харилцагчаа нэмэхэд repo автоматаар үүснэ." action={<Link href="/customers/new" className="btn btn-primary">Харилцагч нэмэх</Link>} />
             ) : (
-              <div className="-mx-5 overflow-x-auto">
-                <table className="table">
-                  <thead><tr><th>Харилцагч</th><th>Төлөв</th><th>Deploy</th><th>Sync</th><th>Төлбөр</th></tr></thead>
-                  <tbody>
-                    {visible.slice(0, 8).map(({ customer: c, repo, health, behind, lastSync }) => (
-                      <tr key={c.id}>
-                        <td>
-                          <Link href={`/customers/${c.slug}`} className="font-medium hover:underline">{c.displayName}</Link>
-                          <div className="mono text-text-3">{repo?.fullName ?? c.githubRepo}</div>
-                        </td>
-                        <td><StatusBadge status={c.status} /></td>
-                        <td><HealthBadge health={health} behind={behind} latest={latest?.tagName ?? null} /></td>
-                        <td><RunBadge run={lastSync} /></td>
-                        <td className="text-text-2">{Number(c.monthlyFee) > 0 ? `${fmtMnt(c.monthlyFee)}/сар` : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <CustomersGrid compact rows={visible.slice(0, 8).map((row) => toCustomerGridRow(row, latest?.tagName ?? null))} />
             )}
           </Section>
         </div>

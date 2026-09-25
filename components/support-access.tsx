@@ -6,7 +6,10 @@
 // дансанд уягдаж, орсны дараа 1 цаг ажиллана. Орох/гарах бүр харилцагчийн
 // аудитад бичигдэж, эзэн/админд нь и-мэйл очно.
 
+import type { ColDef } from "ag-grid-community";
 import { useActionState, useState } from "react";
+
+import { DataGrid } from "@/components/datagrid/data-grid";
 
 import { endSupportSessionAction, openSupportSessionAction } from "@/lib/actions";
 import {
@@ -112,51 +115,68 @@ export function SupportAccessSection({
         {sessions.length === 0 ? (
           <p className="text-sm text-text-3">Энэ байгууллагад хандалт хийгдээгүй байна.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Төлөв</th>
-                  <th>Хэн</th>
-                  <th>Эрх</th>
-                  <th>Шалтгаан</th>
-                  <th>Орсон</th>
-                  <th>Дуусах</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <span className={`badge ${SUPPORT_STATE_BADGE[row.state]}`}>
-                        {SUPPORT_STATE_LABELS[row.state]}
-                      </span>
-                    </td>
-                    <td className="mono">{row.email ?? "—"}</td>
-                    <td>{SUPPORT_ROLE_LABELS[row.role]}</td>
-                    <td className="text-text-3">{row.reason ?? "—"}</td>
-                    <td>{row.startedAt ? fmtDate(row.startedAt) : "—"}</td>
-                    <td>{fmtDate(row.endsAt ?? row.expiresAt)}</td>
-                    <td className="text-right">
-                      {row.state === "active" || row.state === "pending" ? (
-                        <form action={endAction} className="inline">
-                          <input type="hidden" name="session_id" value={row.id} />
-                          <input type="hidden" name="organization_id" value={organizationId} />
-                          <button className="btn btn-sm" type="submit" disabled={ending}>
-                            Таслах
-                          </button>
-                        </form>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataGrid
+            rows={sessions}
+            columns={sessionColumns(organizationId, endAction, ending)}
+            getRowId={(row) => row.id}
+            ariaLabel="Хандалтын түүх"
+            card={(row) => ({
+              title: row.email ?? "—",
+              subtitle: row.reason ?? "шалтгаангүй",
+              corner: fmtDate(row.endsAt ?? row.expiresAt),
+              badges: (
+                <>
+                  <span className={`badge ${SUPPORT_STATE_BADGE[row.state]}`}>{SUPPORT_STATE_LABELS[row.state]}</span>
+                  <span className="badge badge-muted badge-plain">{SUPPORT_ROLE_LABELS[row.role]}</span>
+                </>
+              ),
+              actions: canEnd(row) ? <EndButton row={row} organizationId={organizationId} action={endAction} disabled={ending} /> : null,
+            })}
+          />
         )}
         <Notice result={endResult} />
       </div>
     </div>
   );
+}
+
+const canEnd = (row: SaasSupportSession) => row.state === "active" || row.state === "pending";
+
+function EndButton({ row, organizationId, action, disabled }: { row: SaasSupportSession; organizationId: string; action: (data: FormData) => void; disabled: boolean }) {
+  return (
+    <form action={action} className="inline">
+      <input type="hidden" name="session_id" value={row.id} />
+      <input type="hidden" name="organization_id" value={organizationId} />
+      <button className="btn btn-sm" type="submit" disabled={disabled}>
+        Таслах
+      </button>
+    </form>
+  );
+}
+
+function sessionColumns(organizationId: string, action: (data: FormData) => void, disabled: boolean): ColDef<SaasSupportSession>[] {
+  return [
+    {
+      headerName: "Төлөв",
+      field: "state",
+      minWidth: 130,
+      cellRenderer: ({ data }: { data?: SaasSupportSession }) =>
+        data ? <span className={`badge ${SUPPORT_STATE_BADGE[data.state]}`}>{SUPPORT_STATE_LABELS[data.state]}</span> : null,
+    },
+    { headerName: "Хэн", field: "email", minWidth: 180, flex: 1.5, cellClass: "mono", valueFormatter: ({ value }) => value ?? "—" },
+    { headerName: "Эрх", field: "role", minWidth: 140, valueFormatter: ({ value }) => SUPPORT_ROLE_LABELS[value as SaasSupportSession["role"]] ?? value },
+    { headerName: "Шалтгаан", field: "reason", minWidth: 180, flex: 2, tooltipField: "reason", valueFormatter: ({ value }) => value ?? "—" },
+    { headerName: "Орсон", field: "startedAt", minWidth: 140, valueFormatter: ({ value }) => (value ? fmtDate(value) : "—") },
+    { headerName: "Дуусах", colId: "ends", minWidth: 140, valueGetter: ({ data }) => data?.endsAt ?? data?.expiresAt ?? "", valueFormatter: ({ value }) => fmtDate(value) },
+    {
+      headerName: "",
+      colId: "actions",
+      sortable: false,
+      resizable: false,
+      minWidth: 100,
+      maxWidth: 110,
+      cellRenderer: ({ data }: { data?: SaasSupportSession }) =>
+        data && canEnd(data) ? <EndButton row={data} organizationId={organizationId} action={action} disabled={disabled} /> : null,
+    },
+  ];
 }

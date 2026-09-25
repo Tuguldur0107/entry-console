@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { Icons } from "./icons";
+
 import type { Health, WorkflowRun } from "@/lib/github";
 import type { CustomerPlan, CustomerStatus } from "@/lib/db/schema";
 
@@ -80,7 +82,7 @@ export function HealthBadge({ health, behind, latest }: { health: Health | null;
  * байсан ч ажиллахгүй тул «эрхгүй» гэж ил хэлнэ (худал ногоон гаргахгүй).
  */
 export function AutoSyncBadge({ on, access, status }: { on: boolean; access: boolean; status: CustomerStatus }) {
-  if (status !== "active") return <span className="badge badge-muted badge-plain">—</span>;
+  if (status !== "active") return <span className="text-text-3">—</span>;
   if (!access) return <span className="badge badge-muted" title="Шинэчлэлт авах эрх цуцлагдсан — sync ажиллахгүй">эрхгүй</span>;
   if (!on) return <span className="badge badge-warning" title="Release бүрд гараар merge хийнэ">гараар</span>;
   return <span className="badge badge-success" title="Шалгалт давсан sync PR автоматаар merge хийгдэнэ">авто</span>;
@@ -131,11 +133,11 @@ export function EmptyState({ title, sub, action }: { title: string; sub?: string
   );
 }
 
-export function Section({ title, sub, children, right }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode }) {
+export function Section({ title, sub, children, right, className }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode; className?: string }) {
   return (
-    <section className="card p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
+    <section className={`card p-4 sm:p-5 ${className ?? ""}`}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="card-title">{title}</h2>
           {sub && <p className="card-sub">{sub}</p>}
         </div>
@@ -143,5 +145,40 @@ export function Section({ title, sub, children, right }: { title: string; sub?: 
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * Хуудасны төлөв/шүүлтүүрийн chip — URL-ээр (deep link, server шүүлт).
+ * Хуудас бүрд өөр хэв маяг (badge / btn) байсныг НЭГ болгов.
+ */
+export function FilterChips({ items, active }: { items: { value: string; label: string; href: string; count?: number }[]; active: string }) {
+  return (
+    <nav aria-label="Шүүлтүүр" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+      {items.map((item) => {
+        const on = item.value === active;
+        return (
+          <Link key={item.value || "all"} href={item.href} aria-current={on ? "page" : undefined} className="filter-chip" data-active={on}>
+            {item.label}
+            {item.count !== undefined ? <span className="filter-chip-count">{item.count}</span> : null}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** GET хайлтын форм — дүрс нь бичвэртэй давхцахгүй (`.input`-ийн padding `pl-9`-ийг дардаг байв). */
+export function SearchForm({ q, placeholder, hidden, className }: { q?: string; placeholder: string; hidden?: Record<string, string>; className?: string }) {
+  return (
+    <form className={`flex items-center gap-2 ${className ?? ""}`} method="get" role="search">
+      <label className="search-field min-w-0 flex-1">
+        <span className="sr-only">{placeholder}</span>
+        <Icons.search aria-hidden />
+        <input name="q" defaultValue={q ?? ""} className="input" placeholder={placeholder} type="search" />
+      </label>
+      {Object.entries(hidden ?? {}).map(([name, value]) => (value ? <input key={name} type="hidden" name={name} value={value} /> : null))}
+      <button className="btn" type="submit">Хайх</button>
+    </form>
   );
 }

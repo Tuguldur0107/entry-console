@@ -195,17 +195,6 @@ h1, h2, .kpi-value {
 .kpi-value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
 .kpi-sub { font-size: 12px; color: var(--ea-text-3); margin-top: 2px; }
 
-.table { width: 100%; font-size: 14px; border-collapse: collapse; }
-.table th {
-  text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--ea-text-3); padding: 10px 14px;
-  border-bottom: 1px solid var(--ea-border); background: var(--ea-bg-2);
-}
-.table td { padding: 11px 14px; border-bottom: 1px solid var(--ea-border); vertical-align: middle; }
-.table tr:last-child td { border-bottom: 0; }
-.table tbody tr:hover td { background: var(--ea-hover-subtle); }
-/* Огноо, код зэрэг mono утга нарийн баганад тасрахгүй. */
-.table td .mono, .table td.mono { white-space: nowrap; }
 
 .nav-link {
   display: flex; align-items: center; gap: 10px; padding: 8px 10px;
@@ -240,3 +229,59 @@ h1, h2, .kpi-value {
 .check-ok { background: var(--ea-success-bg); color: var(--ea-success-fg); }
 .check-fail { background: var(--ea-danger-bg); color: var(--ea-danger-fg); }
 .check-warn { background: var(--ea-warning-bg); color: var(--ea-warning-fg); }
+
+/* ── DataGrid (AG Grid) — core-ийн components/datagrid/datagrid.css-тэй нэг хэл ── */
+.ea-data-grid .ag-row-hover { box-shadow: inset 2px 0 0 var(--ea-interactive); }
+.ea-data-grid .ea-row-link { cursor: pointer; }
+.ea-data-grid .ag-cell { display: flex; align-items: center; }
+.ea-data-grid .ag-cell.ag-right-aligned-cell { justify-content: flex-end; }
+/* Нэр + доор нь repo г.м. 2 мөртэй нүд */
+.ea-data-grid .cell-stack {
+  flex-direction: column; align-items: flex-start; justify-content: center;
+  line-height: 1.3; gap: 1px; min-width: 0;
+}
+.ea-data-grid .cell-stack.cell-stack-end { align-items: flex-end; }
+.ea-data-grid .cell-stack > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ea-data-grid .ag-cell .badge { line-height: 1.4; }
+
+/* Утасны карт (DataGrid-ийн <640px хувилбар) */
+.mobile-card {
+  overflow: hidden;
+  border: 1px solid var(--ea-border);
+  border-radius: var(--ea-r-lg);
+  background: var(--ea-surface);
+}
+.mobile-card[data-link] > a:active { background: var(--ea-bg-2); }
+
+/* Шүүлтүүрийн chip — хуудас бүрд нэг хэв маяг */
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  min-height: 32px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--ea-border); background: var(--ea-surface);
+  font-size: 13px; font-weight: 500; color: var(--ea-text-2); white-space: nowrap;
+  transition: background-color var(--ea-motion-hover) var(--ea-ease-standard), color var(--ea-motion-hover) var(--ea-ease-standard);
+}
+.filter-chip:hover { background: var(--ea-hover-subtle); color: var(--ea-text-1); }
+.filter-chip[data-active="true"] { background: var(--ea-selected-bg); border-color: var(--ea-selected-border); color: var(--ea-text-1); }
+.filter-chip-count { font-size: 12px; color: var(--ea-text-3); font-variant-numeric: tabular-nums; }
+
+/* Хайлтын талбар — дүрс нь бичвэрийн ДЭЭР давхцахгүй (.input-ийн padding нь Tailwind pl-9-ийг дардаг байв) */
+.search-field { position: relative; display: block; }
+.search-field svg { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--ea-text-3); pointer-events: none; }
+.search-field .input { padding-left: 34px; }
+
+
+/* Утсан дээр товч, талбар 44px (хуруугаар дарах) */
+@media (max-width: 639px) {
+  .btn { min-height: 40px; }
+  .btn-sm { min-height: 36px; }
+  .input, .select { font-size: 16px; } /* iOS-д focus хийхэд zoom хийхгүй */
+}
+/* autoHeight-д AG Grid 150px доод өндөр тавьдаг — 1–2 мөртэй жагсаалтын доор хоосон зай үлдэж байв */
+.ea-data-grid .ag-layout-auto-height .ag-center-cols-viewport,
+.ea-data-grid .ag-layout-auto-height .ag-center-cols-container,
+.ea-data-grid .ag-layout-auto-height .ag-pinned-left-cols-container,
+.ea-data-grid .ag-layout-auto-height .ag-pinned-right-cols-container { min-height: 0 !important; }
+/* Нүдэн доторх товч нүдээ дүүргэж сунахгүй (AG Grid нүдэнд line-height = мөрийн өндөр өгдөг) */
+.ea-data-grid .ag-cell .btn { align-self: center; height: auto; min-height: 30px; line-height: 1.2; padding-top: 5px; padding-bottom: 5px; }
+.ea-data-grid .ag-cell form { display: flex; align-items: center; }

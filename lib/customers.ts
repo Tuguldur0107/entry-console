@@ -196,22 +196,30 @@ export async function getCustomerBySlug(slug: string): Promise<Customer | null> 
 
 export async function loadCustomerDetail(
   customer: Customer
-): Promise<{ latest: Release | null; customer: CustomerDetail }> {
-  const [latest, repos] = await Promise.all([getLatestRelease(), listCustomerRepos()]);
+): Promise<{ latest: Release | null; customer: CustomerDetail; githubErrors: string[] }> {
+  // GitHub унасан / token дууссан үед ч харилцагчийн хуудас НЭЭГДЭНЭ (самбартай
+  // ижил `safe`) — урьд нь 500 болж холбоо барих, deploy-ийн мэдээлэл ч харагдахгүй байв.
+  // Дуудагч `githubErrors` хоосон биш бол repo-той холбоотой ДЭСТРУКТИВ үйлдлийг хаана
+  // (repo «байхгүй» мэт харагдаж устгах жагсаалтаас хасагдах эрсдэлтэй).
+  const githubErrors: string[] = [];
+  const [latest, repos] = await Promise.all([
+    safe<Release | null>(null, getLatestRelease, githubErrors),
+    safe<CustomerRepo[]>([], listCustomerRepos, githubErrors),
+  ]);
   const repo = repos.find((r) => r.fullName.toLowerCase() === customer.githubRepo.toLowerCase()) ?? null;
   const [reconciled] = await reconcile([customer], repo ? [repo] : []);
   const [summary, collaborators, syncRuns, openPulls, events, provisionRuns, railway] = await Promise.all([
     summarize(reconciled, repo, latest),
-    repo ? listCollaborators(repo.fullName) : Promise.resolve([]),
-    repo ? listWorkflowRuns(repo.fullName, "upstream-sync.yml", 5) : Promise.resolve([]),
-    repo ? listOpenPulls(repo.fullName) : Promise.resolve([]),
+    repo ? safe<Collaborator[]>([], () => listCollaborators(repo.fullName), githubErrors) : Promise.resolve([]),
+    repo ? safe<WorkflowRun[]>([], () => listWorkflowRuns(repo.fullName, "upstream-sync.yml", 5), githubErrors) : Promise.resolve([]),
+    repo ? safe<CustomerDetail["openPulls"]>([], () => listOpenPulls(repo.fullName), githubErrors) : Promise.resolve([]),
     db
       .select()
       .from(customerEvents)
       .where(eq(customerEvents.customerId, customer.id))
       .orderBy(desc(customerEvents.createdAt))
       .limit(20),
-    repo ? Promise.resolve([]) : listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10),
+    repo ? Promise.resolve([]) : safe<WorkflowRun[]>([], () => listWorkflowRuns(config.coreRepo, "provision-customer.yml", 10), githubErrors),
     reconciled.railwayServiceId && reconciled.railwayProjectId && reconciled.railwayEnvironmentId && railwayConfigured()
       ? latestDeployment(reconciled.railwayProjectId, reconciled.railwayEnvironmentId, reconciled.railwayServiceId).catch(() => null)
       : Promise.resolve(null),
@@ -221,6 +229,7 @@ export async function loadCustomerDetail(
   return {
     latest,
     customer: { ...summary, collaborators, syncRuns, openPulls, events, provisionRun, railway },
+    githubErrors: [...new Set(githubErrors)],
   };
 }
 
