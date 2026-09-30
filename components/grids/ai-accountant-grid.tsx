@@ -5,9 +5,10 @@ import Link from "next/link";
 
 import { DataGrid } from "@/components/datagrid/data-grid";
 import { fmtDate } from "@/components/ui";
-import { describeConnection } from "@/lib/saas-ai-accountant";
+import { aiAccountantKind, AI_ACCOUNTANT_KIND_LABELS, describeConnection } from "@/lib/saas-ai-accountant";
 import {
   describeSaasDeadline,
+  SAAS_PLAN_LABELS,
   SAAS_STATUS_BADGE,
   SAAS_STATUS_LABELS,
   type SaasSubscriptionRow,
@@ -18,6 +19,19 @@ const toneClass = (tone: string) => (tone === "danger" ? "text-danger" : tone ==
 
 function StatusBadge({ row }: { row: SaasSubscriptionRow }) {
   return <span className={`badge ${SAAS_STATUS_BADGE[row.status] ?? "badge-muted"}`}>{SAAS_STATUS_LABELS[row.status] ?? row.status}</span>;
+}
+
+/** Төлбөртэй («AI нягтлан» багц) эсвэл үнэгүй (Entry-ийн багц — багцын нэртэй). */
+function KindBadge({ row }: { row: SaasSubscriptionRow }) {
+  const kind = aiAccountantKind(row);
+  if (!kind) return null;
+  return kind === "paid" ? (
+    <span className="badge badge-success">{AI_ACCOUNTANT_KIND_LABELS.paid}</span>
+  ) : (
+    <span className="badge badge-muted" title={`Entry-ийн «${SAAS_PLAN_LABELS[row.planId] ?? row.planId}» багцад багтсан`}>
+      {AI_ACCOUNTANT_KIND_LABELS.free} · {SAAS_PLAN_LABELS[row.planId] ?? row.planId}
+    </span>
+  );
 }
 
 function Connection({ row }: { row: SaasSubscriptionRow }) {
@@ -41,6 +55,13 @@ const COLUMNS: ColDef<SaasSubscriptionRow>[] = [
           <span className="truncate text-text-3">{data.orgName}</span>
         </>
       ) : null,
+  },
+  {
+    headerName: "Төрөл",
+    colId: "kind",
+    minWidth: 170,
+    valueGetter: ({ data }) => (data ? aiAccountantKind(data) ?? "" : ""),
+    cellRenderer: ({ data }: { data?: SaasSubscriptionRow }) => (data ? <KindBadge row={data} /> : null),
   },
   { headerName: "Төлөв", field: "status", minWidth: 140, cellRenderer: ({ data }: { data?: SaasSubscriptionRow }) => (data ? <StatusBadge row={data} /> : null) },
   {
@@ -91,14 +112,18 @@ export function AiAccountantGrid({ rows }: { rows: SaasSubscriptionRow[] }) {
       getRowId={(row) => row.organizationId}
       rowHref={href}
       rowHeight={54}
-      ariaLabel="AI нягтлангийн захиалагчид"
+      ariaLabel="AI нягтлангийн ашиглагчид"
       card={(row) => {
         const d = describeSaasDeadline(row);
         return {
           title: row.ownerEmail ?? row.orgName,
           subtitle: row.orgName,
           corner: <Connection row={row} />,
-          badges: <StatusBadge row={row} />,
+          badges: (
+            <>
+              <KindBadge row={row} /> <StatusBadge row={row} />
+            </>
+          ),
           meta: (
             <>
               {d.text !== "—" ? <><span className={toneClass(d.tone)}>{d.text}</span> · </> : null}
