@@ -8,6 +8,7 @@ import { getCustomerBySlug, logEvent } from "@/lib/customers";
 import { dispatchWorkflow, getActionsPermissions, getDefaultBranch, getJobLogHead, getJobLogTail, getLatestRelease, GitHubError, getOrgActionsPermissions, hasRepoSecret, listRunJobs, listWorkflowRuns } from "@/lib/github";
 import { config } from "@/lib/config";
 import { bootstrapSyncWorkflow, PUSH_SECRET_NAME, SECRET_NAME, UpstreamAccessError } from "@/lib/upstream-access";
+import { resolveSyncRef } from "@/lib/sync-ref";
 import { latestSyncResult, openSyncPulls } from "@/lib/sync-pr";
 import { listBranches, listOpenSyncPulls } from "@/lib/github";
 
@@ -115,8 +116,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const body = (await request.json().catch(() => ({}))) as { ref?: string };
   try {
     // Workflow файлуудыг урьдчилан тэнцүүлнэ — доорх «Push» тайлбарыг үзнэ үү
-    await bootstrapSyncWorkflow(customer).catch(() => undefined);
-    const target = body.ref?.trim() || (await getLatestRelease())?.tagName || "main";
+    const target = resolveSyncRef(body.ref, (await getLatestRelease())?.tagName);
+    await bootstrapSyncWorkflow(customer, target).catch(() => undefined);
     const branch = await getDefaultBranch(customer.githubRepo);
     await dispatchWorkflow(customer.githubRepo, "upstream-sync.yml", branch, { ref: target });
     await logEvent(customer.id, "sync", `Upstream sync эхэллээ (REST): ${target}`);

@@ -26,6 +26,7 @@ import {
   ensureActionsPermissions,
   getActionsPermissions,
   getFile,
+  getLatestRelease,
   listDir,
   putFile,
   deleteDeployKey,
@@ -36,6 +37,7 @@ import {
   setRepoSecret,
 } from "./github";
 import { pushKeyFailureText } from "./push-key";
+import { resolveSyncRef } from "./sync-ref";
 import { generateSshKeyPair } from "./ssh-key";
 
 export class UpstreamAccessError extends Error {}
@@ -215,17 +217,25 @@ const WORKFLOW_DIR = ".github/workflows";
  *
  * Console-ийн token-д `workflow` scope байдаг тул шууд бичиж чадна.
  */
-export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updated: string[]; checked: number; permissions: string }> {
+export async function bootstrapSyncWorkflow(
+  customer: Customer,
+  /**
+   * Core-ийн аль ref-ийн workflow-той тэнцүүлэх — sync хийх ГЭЖ БУЙ ref-тэй ЯГ ИЖИЛ
+   * байх ёстой (`resolveSyncRef`). Өгөөгүй бол хамгийн сүүлийн release tag (main биш).
+   */
+  ref?: string
+): Promise<{ updated: string[]; checked: number; permissions: string; ref: string }> {
   // Actions нь PR нээх эрхтэй эсэхийг мөн засна — org-ийн default нь ихэвчлэн
   // «PR үүсгэхийг хориглох» байдаг тул provision үед тавьсан ч буцаж унтардаг.
   const permissions = await ensureActionsPermissions(customer.githubRepo, config.owner).catch((e) =>
     e instanceof Error ? `алдаа: ${e.message}` : "алдаа"
   );
-  const files = await listDir(config.coreRepo, WORKFLOW_DIR);
-  if (files.length === 0) throw new UpstreamAccessError(`${config.coreRepo} дээр ${WORKFLOW_DIR} олдсонгүй`);
+  const source = ref ?? resolveSyncRef(undefined, (await getLatestRelease())?.tagName);
+  const files = await listDir(config.coreRepo, WORKFLOW_DIR, source);
+  if (files.length === 0) throw new UpstreamAccessError(`${config.coreRepo}@${source} дээр ${WORKFLOW_DIR} олдсонгүй`);
   const updated: string[] = [];
   for (const f of files) {
-    const core = await getFile(config.coreRepo, f.path);
+    const core = await getFile(config.coreRepo, f.path, source);
     if (!core) continue;
     const mine = await getFile(customer.githubRepo, f.path).catch(() => null);
     if (mine && mine.content === core.content) continue;
@@ -234,7 +244,7 @@ export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updat
         customer.githubRepo,
         f.path,
         core.content,
-        `${f.name}-г core-ийн хувилбартай тэнцүүлэв (Entry Console)`,
+        `${f.name}-г core-ийн ${source} хувилбартай тэнцүүлэв (Entry Console)`,
         mine?.sha
       );
       updated.push(f.name);
@@ -246,8 +256,8 @@ export async function bootstrapSyncWorkflow(customer: Customer): Promise<{ updat
       throw error;
     }
   }
-  if (updated.length) await logEvent(customer.id, "access", `Workflow тэнцүүлэв: ${updated.join(", ")}`);
+  if (updated.length) await logEvent(customer.id, "access", `Workflow тэнцүүлэв (${source}): ${updated.join(", ")}`);
   if (permissions === "repo" || permissions === "org+repo")
     await logEvent(customer.id, "access", `Actions-ийн PR үүсгэх эрхийг нээв (${permissions})`);
-  return { updated, checked: files.length, permissions };
+  return { updated, checked: files.length, permissions, ref: source };
 }

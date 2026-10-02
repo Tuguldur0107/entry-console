@@ -15,6 +15,7 @@ import { applyStatusTransition, LifecycleError } from "./lifecycle";
 import { attachBackupsAndDomain } from "./deploy";
 import { runMonitor } from "./monitor";
 import { bootstrapSyncWorkflow, grantUpstreamAccess, revokeUpstreamAccess, UpstreamAccessError } from "./upstream-access";
+import { resolveSyncRef } from "./sync-ref";
 import { createBackup, createCustomDomain, deleteCustomDomain, deleteOrphanVolumes } from "./railway";
 import { config } from "./config";
 import {
@@ -316,8 +317,10 @@ export async function syncCustomer(slug: string, ref?: string): Promise<ActionRe
     // Sync эхлэхийн ӨМНӨ workflow файлуудыг тэнцүүлнэ: тэгвэл sync салбарт
     // workflow-ийн ӨӨРЧЛӨЛТ үлдэхгүй тул GITHUB_TOKEN-оор push хийгдэнэ
     // (үгүй бол GitHub «workflows permission» гэж татгалзана).
-    await bootstrapSyncWorkflow(customer).catch(() => undefined);
-    const target = ref?.trim() || (await getLatestRelease())?.tagName || "main";
+    // Тэнцүүлэлт ба sync ЯГ НЭГ ref (lib/sync-ref.ts) — main-аас тэнцүүлээд tag-аар
+    // sync хийвэл workflow зөрж push татгалзагдана.
+    const target = resolveSyncRef(ref, (await getLatestRelease())?.tagName);
+    await bootstrapSyncWorkflow(customer, target).catch(() => undefined);
     const branch = await getDefaultBranch(customer.githubRepo);
     await dispatchWorkflow(customer.githubRepo, "upstream-sync.yml", branch, { ref: target });
     await logEvent(customer.id, "sync", `Upstream sync эхэллээ: ${target}`);
@@ -402,7 +405,7 @@ export async function syncAllCustomers(): Promise<ActionResult> {
       // secret нэр солигдсон г.м.) — `runMonitor`-тай ИЖИЛ байдлаар эхлээд
       // core-ийнхтэй тэнцүүлнэ. Алдааг залгина: тэнцүүлж чадаагүй ч хуучин
       // workflow-гоор оролдох нь огт оролдохгүй байхаас дээр.
-      await bootstrapSyncWorkflow(row).catch(() => undefined);
+      await bootstrapSyncWorkflow(row, target).catch(() => undefined);
       await dispatchWorkflow(row.githubRepo, "upstream-sync.yml", branch, { ref: target });
       await logEvent(row.id, "sync", `Бөөн sync: ${target}`);
       started += 1;
