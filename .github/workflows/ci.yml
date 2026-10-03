@@ -61,4 +61,4 @@ jobs:
         run: npm run build
 
       - name: Хамаарлын аудит
-        run: npm audit --audit-level=high
+        run: node scripts/audit-check.mjs
