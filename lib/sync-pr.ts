@@ -18,17 +18,25 @@
 //
 // (2)-ыг ганцаар ашиглавал conflict нь «unknown» болж, PR нь label-гүй
 // нээгдээд авто sync ЧИМЭЭГҮЙ зогсдог байв — smartgps 2026-09-16.
+//
+// Салбар нь ажиллагааны ДУНД (шалгалтаас өмнө) push хийгддэг тул monitor PR-ыг
+// шалгалт дуусахаас өмнө нээж, ӨМНӨХ (өөр ref-ийн) дууссан ажиллагааны үр дүнг
+// уншдаг байв — smartgps 2026-10-03 v1.8.0: «Шалгалт: unknown», label-гүй PR.
+// Өмнөх ажиллагаа `passed` байсан бол шинэ PR ХУУЧИН үр дүнгээр авто merge
+// болох эрсдэлтэй. Одоо: сүүлийн ажиллагаа явж байвал `pending` (PR нээхгүй,
+// label тавихгүй — дараагийн tick), үр дүнг ЗӨВХӨН тухайн салбарыг хэвлэсэн
+// ажиллагааны логоос авна.
 import { config } from "./config";
 import { logEvent } from "./customers";
 import type { Customer } from "./db/schema";
 import { addLabel, createPull, getJobLog, listBranches, listOpenSyncPulls, listRunJobs, listWorkflowRuns, removeLabel } from "./github";
 
-export type SyncResult = "passed" | "failed" | "conflict" | "unknown";
+export type SyncResult = "passed" | "failed" | "conflict" | "unknown" | "pending";
 
 const MERGE_STEP = "Merge туршилт";
 const CHECK_STEP = "Шалгалт";
 
-const LABELS: Record<Exclude<SyncResult, "unknown">, { name: string; color: string; description: string }> = {
+const LABELS: Record<Exclude<SyncResult, "unknown" | "pending">, { name: string; color: string; description: string }> = {
   passed: { name: "sync-checks-passed", color: "0e8a16", description: "Merge туршилт + tsc/lint/test давсан — авто merge болно" },
   failed: { name: "sync-checks-failed", color: "d93f0b", description: "Шалгалт унасан — гараар шалгана" },
   conflict: { name: "sync-conflict", color: "b60205", description: "Merge conflict — гараар шийднэ" },
@@ -46,6 +54,16 @@ export function parseResultFromLog(log: string): SyncResult | null {
   return found;
 }
 
+/**
+ * Ажиллагааны лог ЭНЭ sync салбарынх эсэх (ЦЭВЭР, тесттэй). «Дүгнэлт» алхам
+ * `Салбар: \`upstream-sync/<ref>\`` гэж хэвлэдэг; `upstream-sync/v1.8` нь
+ * `upstream-sync/v1.8.0`-тэй андуурагдахгүйн тулд араас нь backtick / `\` шаардана.
+ */
+export function logMentionsBranch(log: string, branch: string): boolean {
+  const escaped = branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${escaped}[\`\\\\]`).test(log);
+}
+
 /** Алхмын conclusion-оос үр дүнг ойролцоогоор гаргана (ЦЭВЭР, тесттэй). */
 export function resultFromSteps(
   merge: { conclusion: string | null } | undefined,
@@ -61,31 +79,46 @@ export function resultFromSteps(
   return "unknown";
 }
 
-/** Сүүлийн дууссан sync ажиллагааны үр дүн: эхлээд лог, дараа нь алхмууд. */
-export async function latestSyncResult(fullName: string): Promise<{ result: SyncResult; runUrl: string | null }> {
+/**
+ * Sync ажиллагааны үр дүн: эхлээд лог, дараа нь алхмууд.
+ *
+ * - Хамгийн сүүлийн ажиллагаа дуусаагүй бол `pending` — үр дүн хараахан алга.
+ * - `branch` өгвөл ЗӨВХӨН тэр салбарыг хэвлэсэн ажиллагааг тооцно (өөр ref-ийн
+ *   ажиллагааны үр дүнг ХЭЗЭЭ Ч хэрэглэхгүй); олдохгүй бол `unknown`.
+ */
+export async function latestSyncResult(
+  fullName: string,
+  branch?: string
+): Promise<{ result: SyncResult; runUrl: string | null }> {
   const runs = await listWorkflowRuns(fullName, "upstream-sync.yml", 5).catch(() => []);
-  const run = runs.find((r) => r.status === "completed");
-  if (!run) return { result: "unknown", runUrl: null };
-  const jobs = await listRunJobs(fullName, run.id).catch(() => []);
-  const steps = jobs.flatMap((j) => j.steps);
-  const find = (needle: string) => steps.find((st) => st.name.startsWith(needle));
-  const merge = find(MERGE_STEP);
-  const checks = find(CHECK_STEP);
-  if (!merge) return { result: "unknown", runUrl: run.htmlUrl };
-
-  const job = jobs.find((j) => j.steps.some((st) => st.name.startsWith(MERGE_STEP)));
-  if (job) {
-    const fromLog = parseResultFromLog(await getJobLog(fullName, job.id).catch(() => ""));
+  const latest = runs[0];
+  if (latest && latest.status !== "completed") return { result: "pending", runUrl: latest.htmlUrl };
+  for (const run of runs) {
+    if (run.status !== "completed") continue;
+    const jobs = await listRunJobs(fullName, run.id).catch(() => []);
+    const steps = jobs.flatMap((j) => j.steps);
+    const find = (needle: string) => steps.find((st) => st.name.startsWith(needle));
+    const merge = find(MERGE_STEP);
+    const checks = find(CHECK_STEP);
+    if (!merge) {
+      if (branch) continue;
+      return { result: "unknown", runUrl: run.htmlUrl };
+    }
+    const job = jobs.find((j) => j.steps.some((st) => st.name.startsWith(MERGE_STEP)));
+    const log = job ? await getJobLog(fullName, job.id).catch(() => "") : "";
+    if (branch && !logMentionsBranch(log, branch)) continue;
+    const fromLog = parseResultFromLog(log);
     if (fromLog) return { result: fromLog, runUrl: run.htmlUrl };
+    return { result: resultFromSteps(merge, checks), runUrl: run.htmlUrl };
   }
-  return { result: resultFromSteps(merge, checks), runUrl: run.htmlUrl };
+  return { result: "unknown", runUrl: latest?.htmlUrl ?? null };
 }
 
 const ALL_LABELS = Object.values(LABELS).map((l) => l.name);
 
 /** PR дээр үр дүнгийн label-ыг тавина; бусад sync label-ыг авна. Идемпотент. */
 async function applyLabel(fullName: string, number: number, result: SyncResult, current: string[]): Promise<boolean> {
-  if (result === "unknown") return false;
+  if (result === "unknown" || result === "pending") return false;
   const want = LABELS[result];
   if (current.includes(want.name) && current.filter((l) => ALL_LABELS.includes(l)).length === 1) return false;
   for (const stale of current.filter((l) => ALL_LABELS.includes(l) && l !== want.name))
@@ -116,13 +149,15 @@ export async function openSyncPulls(customer: Customer, defaultBranch: string): 
   // Аль хэдийн нээлттэй PR-уудын label-ыг мөн засна: workflow нь label тавьж
   // чаддаггүй болсон тул шошгогүй PR үлдэж, авто merge ажиллахгүй байдаг.
   for (const p of openPulls) {
-    const { result } = await latestSyncResult(customer.githubRepo);
+    const { result } = await latestSyncResult(customer.githubRepo, p.headRef);
     if (await applyLabel(customer.githubRepo, p.number, result, p.labels))
       await logEvent(customer.id, "sync", `PR #${p.number} label: ${result}`);
   }
   for (const branch of branches) {
     if (withPr.has(branch.name)) continue;
-    const { result, runUrl } = await latestSyncResult(customer.githubRepo);
+    const { result, runUrl } = await latestSyncResult(customer.githubRepo, branch.name);
+    // Шалгалт дуусаагүй — PR-ыг дараагийн tick-д ЗӨВ үр дүнтэй нь нээнэ.
+    if (result === "pending") continue;
     const ref = branch.name.replace(/^upstream-sync\//, "");
     const label = result === "unknown" ? null : LABELS[result];
     const verdict =
