@@ -21,6 +21,7 @@ import {
 } from "./github";
 import { deployNow, syncRepoConnections } from "./deploy";
 import { needsPushKey } from "./push-key";
+import { isVersionBehind } from "./sync-ref";
 import { grantUpstreamAccess } from "./upstream-access";
 import { latestDeployment, railwayCanConnectRepo, railwayConfigured, type RailwayStatus } from "./railway";
 
@@ -44,15 +45,8 @@ export interface CustomerDetail extends CustomerSummary {
   railway: RailwayStatus | null;
 }
 
-function normalizeVersion(v: string | null): string | null {
-  return v ? v.replace(/^v/, "") : null;
-}
-
 export function isBehind(health: Health | null, latest: Release | null): boolean | null {
-  const current = normalizeVersion(health?.version ?? null);
-  const target = normalizeVersion(latest?.tagName ?? null);
-  if (!current || !target) return null;
-  return current !== target;
+  return isVersionBehind(health?.version, latest?.tagName);
 }
 
 export async function logEvent(customerId: string, type: string, message: string): Promise<void> {

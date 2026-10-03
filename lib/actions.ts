@@ -294,13 +294,15 @@ export async function bootstrapWorkflow(slug: string): Promise<ActionResult> {
   const customer = await getCustomerBySlug(slug);
   if (!customer) return { ok: false, error: "Харилцагч олдсонгүй" };
   try {
-    const { updated, checked, permissions } = await bootstrapSyncWorkflow(customer);
+    const { updated, checked, permissions, skipped } = await bootstrapSyncWorkflow(customer);
     revalidatePath(`/customers/${slug}`);
     const perm = permissions === "already" ? "" : ` · Actions эрх: ${permissions}`;
-    return {
-      ok: true,
-      message: (updated.length ? `Шинэчлэгдлээ: ${updated.join(", ")}` : `${checked} workflow аль хэдийн core-тэй ижил`) + perm,
-    };
+    const head = skipped
+      ? `Тэнцүүлээгүй: ${skipped} (workflow-ийг хуучин руу буцаахгүй)`
+      : updated.length
+        ? `Шинэчлэгдлээ: ${updated.join(", ")}`
+        : `${checked} workflow аль хэдийн core-тэй ижил`;
+    return { ok: true, message: head + perm };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

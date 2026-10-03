@@ -16,3 +16,29 @@ export function resolveSyncRef(explicit: string | null | undefined, latestReleas
   const tag = latestReleaseTag?.trim();
   return tag || "main";
 }
+
+/** `v1.10.0` / `1.9.2` → [1, 10, 0]; semver биш бол null. */
+function parseVersion(v: string | null | undefined): number[] | null {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec((v ?? "").trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/**
+ * Харилцагчийн хувилбар core-ийн сүүлийн release-ЭЭС ХОЦОРСОН эсэх.
+ *
+ * Яагаад `!==` биш: release tag-гүй commit-оор (SHA) sync хийсэн fork сүүлийн
+ * tag-аас ӨМНӨ байж болно (2026-10-02 SmartGPS 1.7.0, сүүлийн tag v1.6.0) — тэгш
+ * бусаар харьцуулбал «хоцорсон» гэж 30 мин тутам авто sync эхлүүлж, workflow-ийг
+ * хуучин tag руу буцаадаг байв. Хоёулаа semver бол тоогоор; эс бөгөөс тэгш бус.
+ * Аль нэг нь алга бол null (мэдэгдэхгүй).
+ */
+export function isVersionBehind(current: string | null | undefined, latest: string | null | undefined): boolean | null {
+  const a = (current ?? "").trim().replace(/^v/, "");
+  const b = (latest ?? "").trim().replace(/^v/, "");
+  if (!a || !b) return null;
+  const pa = parseVersion(a);
+  const pb = parseVersion(b);
+  if (!pa || !pb) return a !== b;
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] < pb[i];
+  return false;
+}

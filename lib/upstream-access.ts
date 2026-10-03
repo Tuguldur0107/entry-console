@@ -29,6 +29,8 @@ import {
   getLatestRelease,
   listDir,
   putFile,
+  repoContainsCommit,
+  resolveCommitSha,
   deleteDeployKey,
   deleteRepoSecret,
   GitHubError,
@@ -224,13 +226,20 @@ export async function bootstrapSyncWorkflow(
    * байх ёстой (`resolveSyncRef`). Өгөөгүй бол хамгийн сүүлийн release tag (main биш).
    */
   ref?: string
-): Promise<{ updated: string[]; checked: number; permissions: string; ref: string }> {
+): Promise<{ updated: string[]; checked: number; permissions: string; ref: string; skipped?: string }> {
   // Actions нь PR нээх эрхтэй эсэхийг мөн засна — org-ийн default нь ихэвчлэн
   // «PR үүсгэхийг хориглох» байдаг тул provision үед тавьсан ч буцаж унтардаг.
   const permissions = await ensureActionsPermissions(customer.githubRepo, config.owner).catch((e) =>
     e instanceof Error ? `алдаа: ${e.message}` : "алдаа"
   );
   const source = ref ?? resolveSyncRef(undefined, (await getLatestRelease())?.tagName);
+  // Workflow-ийг ХЭЗЭЭ Ч ХОЙШЛУУЛАХГҮЙ: fork энэ ref-ийг аль хэдийн агуулж байвал
+  // (жишээ нь сүүлийн tag-аас ХОЙШХИ commit-оор sync хийсэн) тэнцүүлэлт нь workflow-ийг
+  // ХУУЧИН хувилбар руу буцаана — 2026-10-02 SmartGPS (1.7.0)-ийн ci.yml v1.6.0 болсон.
+  // Тэр үед sync ч хоосон (fetch нь up_to_date) тул тэнцүүлэх шаардлагагүй.
+  const sha = await resolveCommitSha(config.coreRepo, source);
+  if (sha && (await repoContainsCommit(customer.githubRepo, sha)))
+    return { updated: [], checked: 0, permissions, ref: source, skipped: `fork ${source}-ийг аль хэдийн агуулсан` };
   const files = await listDir(config.coreRepo, WORKFLOW_DIR, source);
   if (files.length === 0) throw new UpstreamAccessError(`${config.coreRepo}@${source} дээр ${WORKFLOW_DIR} олдсонгүй`);
   const updated: string[] = [];

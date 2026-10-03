@@ -593,6 +593,32 @@ export async function getLatestRelease(): Promise<Release | null> {
   }
 }
 
+/** `ref` (tag / салбар / SHA)-ийн commit SHA; олдохгүй бол null. */
+export async function resolveCommitSha(fullName: string, ref: string): Promise<string | null> {
+  try {
+    const r = await gh<{ sha: string }>(`/repos/${fullName}/commits/${encodeURIComponent(ref)}`);
+    return r.sha;
+  } catch (error) {
+    if (error instanceof GitHubError && (error.status === 404 || error.status === 422)) return null;
+    throw error;
+  }
+}
+
+/**
+ * `fullName`-ийн default салбар `sha` commit-ийг аль хэдийн агуулж буй эсэх.
+ * Commit тэр repo-д огт байхгүй (404/422) бол false.
+ */
+export async function repoContainsCommit(fullName: string, sha: string): Promise<boolean> {
+  const branch = await getDefaultBranch(fullName);
+  try {
+    const r = await gh<{ status: string }>(`/repos/${fullName}/compare/${sha}...${encodeURIComponent(branch)}`);
+    return r.status === "ahead" || r.status === "identical";
+  } catch (error) {
+    if (error instanceof GitHubError && (error.status === 404 || error.status === 422)) return false;
+    throw error;
+  }
+}
+
 export async function getDefaultBranch(fullName: string): Promise<string> {
   const r = await gh<{ default_branch: string }>(`/repos/${fullName}`);
   return r.default_branch;

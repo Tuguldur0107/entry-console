@@ -12,6 +12,7 @@ import { ensureSchema } from "./db/ensure";
 import { needsPushKey, pushKeyFailureText, pushKeyRetryDue } from "./push-key";
 import { bootstrapSyncWorkflow, ensureSyncPushKey } from "./upstream-access";
 import { openSyncPulls } from "./sync-pr";
+import { isVersionBehind } from "./sync-ref";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
 import { notify } from "./notify";
@@ -34,7 +35,6 @@ const REALERT_MS = 6 * 60 * 60 * 1000;
 /** Push түлхүүрийн сүүлийн АМЖИЛТГҮЙ оролдлого (процесс дотор — restart бол шууд дахин оролдоно). */
 const pushKeyAttempts = new Map<string, Date>();
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const norm = (v: string | null | undefined) => (v ?? "").replace(/^v/, "");
 
 export async function runMonitor(): Promise<MonitorSummary> {
   await ensureSchema();
@@ -176,7 +176,7 @@ export async function runMonitor(): Promise<MonitorSummary> {
         patch.syncNote = note;
         // Хоцорсон + нээлттэй PR алга + sync ажиллаж байгаа эсэх
         const health = c.appUrl ? await fetchHealth(c.appUrl) : null;
-        const behind = !!latest && !!health?.version && norm(health.version) !== norm(latest.tagName);
+        const behind = isVersionBehind(health?.version, latest?.tagName) === true;
         if (behind && pulls.length === 0) {
           const runs = await listWorkflowRuns(c.githubRepo, "upstream-sync.yml", 1).catch(() => []);
           const running = runs[0] && runs[0].status !== "completed";
