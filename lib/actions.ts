@@ -26,6 +26,8 @@ import {
   SaasApiError,
   deleteSaasOrganization,
   saveSaasSubscription,
+  sendCampaign,
+  sendTestCampaignEmail,
   setOrgSeatPrice,
 } from "./saas-api";
 import { parsePlanPricePeriodForm, parsePriceField, parseSaasSubscriptionForm } from "./saas-subscriptions";
@@ -830,6 +832,54 @@ export async function endSupportSessionAction(
     await endSupportSession(id);
     if (organizationId) revalidatePath(`/subscriptions/${organizationId}`);
     return { ok: true, message: "Дэмжлэгийн сесс хаагдлаа" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+// ── Харилцагчид руу и-мэйл ────────────────────────────────────────────────
+
+/** Өөр рүүгээ туршилт — core-ийн POST /api/platform/emails { test }. */
+export async function sendTestEmailAction(input: {
+  to: string;
+  organizationId: string | null;
+  subject: string;
+  body: string;
+}): Promise<ActionResult> {
+  await requireSession();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to.trim())) return { ok: false, error: "Туршилтын хаяг буруу" };
+  try {
+    await sendTestCampaignEmail(input);
+    return { ok: true, message: `Туршилт ${input.to.trim()} руу явлаа` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/**
+ * Сонгосон байгууллагуудын эзэд рүү илгээх — core-ийн POST /api/platform/emails.
+ * idempotencyKey нь бичих цонх бүрд нэг (давхар дарвал core дахин илгээхгүй).
+ */
+export async function sendCampaignAction(input: {
+  organizationIds: string[];
+  subject: string;
+  body: string;
+  idempotencyKey: string;
+}): Promise<ActionResult & { campaignId?: string }> {
+  await requireSession();
+  try {
+    const result = await sendCampaign(input, "console");
+    revalidatePath("/emails");
+    const parts = [`илгээсэн ${result.sentCount}`];
+    if (result.failedCount) parts.push(`алдаатай ${result.failedCount}`);
+    if (result.skippedCount) parts.push(`татгалзсан тул алгассан ${result.skippedCount}`);
+    if (result.sentCount === 0 && result.failedCount > 0)
+      return { ok: false, error: `Илгээгдсэнгүй: ${parts.join(", ")}`, campaignId: result.campaignId };
+    return {
+      ok: true,
+      message: `${result.duplicate ? "Өмнө илгээгдсэн — дахин илгээгээгүй: " : ""}${parts.join(", ")}`,
+      campaignId: result.campaignId,
+    };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

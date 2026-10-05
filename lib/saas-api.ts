@@ -4,6 +4,12 @@
 
 import { config } from "./config";
 import type { SaasBillingPayment } from "./saas-billing";
+import type {
+  SaasCampaign,
+  SaasCampaignDetail,
+  SaasCampaignResult,
+  SaasTrialContactsReport,
+} from "./saas-emails";
 import { withSeatPrice } from "./saas-subscriptions";
 import type {
   SaasOrgDetail,
@@ -29,7 +35,12 @@ export function saasApiConfigured(): boolean {
   return !!config.saas;
 }
 
-async function call<T>(path: string, method: "GET" | "PUT" | "POST" | "DELETE", body?: unknown): Promise<T> {
+async function call<T>(
+  path: string,
+  method: "GET" | "PUT" | "POST" | "DELETE",
+  body?: unknown,
+  timeoutMs = 20_000
+): Promise<T> {
   const saas = config.saas;
   if (!saas) throw new SaasApiError("ENTRY_SAAS_API_URL / ENTRY_SAAS_API_KEY тохируулаагүй (.env.example)");
   let response: Response;
@@ -39,7 +50,7 @@ async function call<T>(path: string, method: "GET" | "PUT" | "POST" | "DELETE", 
       headers: { Authorization: `Bearer ${saas.apiKey}`, "Content-Type": "application/json", Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     throw new SaasApiError(`SaaS сервис хүрэхгүй байна (${saas.apiUrl}): ${error instanceof Error ? error.message : String(error)}`);
@@ -264,5 +275,94 @@ export async function listSaasBillingPayments(
   } catch (error) {
     if (error instanceof SaasApiError && error.status === 404) return [];
     throw error;
+  }
+}
+
+// ── Харилцагчид руу и-мэйл (кампанит ажил) ─────────────────────────────────
+
+const TRIAL_CONTACTS = "/api/platform/trial-contacts";
+const EMAILS = "/api/platform/emails";
+
+/** Core-ийн хуучин хувилбар энэ замуудыг мэдэхгүй (404) — ил алдаа. */
+function oldCore(error: unknown): never {
+  if (error instanceof SaasApiError && error.status === 404)
+    throw new SaasApiError(
+      "Core сервисийн хувилбар и-мэйлийн замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
+      404
+    );
+  throw error;
+}
+
+/** Туршилтын харилцагчид + Resend-ийн хүргэлт (Resend-ийг уншдаг тул удаан байж болно). */
+export async function listTrialContacts(): Promise<SaasTrialContactsReport> {
+  try {
+    const result = await call<Partial<SaasTrialContactsReport>>(TRIAL_CONTACTS, "GET", undefined, 60_000);
+    return {
+      sender: result.sender ?? { from: null, domain: null, domainStatus: null },
+      delivery: result.delivery ?? { available: false, error: null, scanned: 0, truncated: false },
+      // Хуучин core: татгалзалт/кампанийн талбаргүй — null / 0 (тоо ЗОХИОХГҮЙ)
+      contacts: (Array.isArray(result.contacts) ? result.contacts : []).map((contact) => ({
+        ...contact,
+        marketingOptOutAt: contact.marketingOptOutAt ?? null,
+        campaignsReceived: contact.campaignsReceived ?? 0,
+      })),
+    };
+  } catch (error) {
+    return oldCore(error);
+  }
+}
+
+export async function listCampaigns(): Promise<SaasCampaign[]> {
+  try {
+    const result = await call<{ campaigns: SaasCampaign[] }>(EMAILS, "GET");
+    return Array.isArray(result.campaigns) ? result.campaigns : [];
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+/** Кампанит ажлын дэлгэрэнгүй; refresh = хүргэлтийн төлөвийг Resend-ээс шинэчилнэ. */
+export async function getCampaign(id: string, refresh: boolean): Promise<SaasCampaignDetail | null> {
+  try {
+    return await call<SaasCampaignDetail>(
+      `${EMAILS}?id=${encodeURIComponent(id)}${refresh ? "&refresh=1" : ""}`,
+      "GET",
+      undefined,
+      60_000
+    );
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function sendCampaign(
+  input: { organizationIds: string[]; subject: string; body: string; idempotencyKey: string },
+  actor: string
+): Promise<SaasCampaignResult> {
+  try {
+    const result = await call<{ result: SaasCampaignResult }>(EMAILS, "POST", { ...input, actor }, 150_000);
+    return result.result;
+  } catch (error) {
+    return oldCore(error);
+  }
+}
+
+export async function sendTestCampaignEmail(input: {
+  to: string;
+  organizationId: string | null;
+  subject: string;
+  body: string;
+}): Promise<{ resendId: string }> {
+  try {
+    const result = await call<{ test: { resendId: string } }>(EMAILS, "POST", {
+      subject: input.subject,
+      body: input.body,
+      test: { to: input.to, organizationId: input.organizationId },
+    });
+    return result.test;
+  } catch (error) {
+    return oldCore(error);
   }
 }
