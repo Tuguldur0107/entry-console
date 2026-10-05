@@ -31,6 +31,9 @@ import {
 import { parsePlanPricePeriodForm, parsePriceField, parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { parseSupportRequest } from "./saas-orgs";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
+import { runOntologyReport, saveReportSettings } from "./ontology-report-db";
+import { parseReportSettingsForm, WEEKDAY_LABELS } from "./ontology-report";
+import { alertChannels } from "./notify";
 import { db } from "./db";
 import {
   CUSTOMER_PLANS,
@@ -612,6 +615,43 @@ export async function runMonitorNow(): Promise<ActionResult> {
     revalidatePath("/settings");
     revalidatePath("/");
     return { ok: true, message: `${s.checked} шалгав · унасан ${s.down.length} · сэргэсэн ${s.recovered.length} · merge ${s.merged.length} · sync ${s.synced.length} · мэдэгдэл ${s.alertsSent}${s.errors.length ? ` · алдаа: ${s.errors.join("; ")}` : ""}` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Ontology-ийн долоо хоногийн тайлангийн хуваарь (/ontology). */
+export async function saveOntologyReportSettings(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const parsed = parseReportSettingsForm(
+    {
+      enabled: formData.get("enabled") === "on",
+      weekday: text(formData, "weekday"),
+      hour: text(formData, "hour"),
+      onlyOnIssues: formData.get("onlyOnIssues") === "on",
+    },
+    new Date()
+  );
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  try {
+    await saveReportSettings(parsed.settings);
+    revalidatePath("/ontology");
+    const s = parsed.settings;
+    return { ok: true, message: s.enabled ? `Хадгаллаа — ${WEEKDAY_LABELS[s.weekday]} гараг бүр ${String(s.hour).padStart(2, "0")}:00 (УБ)` : "Хадгаллаа — хуваарьт тайлан унтарсан" };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Ontology тайланг одоо гаргаж (хадгалж) мэдэгдэл илгээнэ. */
+export async function runOntologyReportNow(): Promise<ActionResult> {
+  await requireSession();
+  try {
+    const { report, notified } = await runOntologyReport("manual");
+    revalidatePath("/ontology");
+    const channels = alertChannels();
+    const sent = notified ? `${channels.join(", ")}-ээр илгээв` : channels.length ? "мэдэгдэл илгээгдсэнгүй" : "мэдэгдлийн суваг алга (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)";
+    return { ok: true, message: `${report.targets.length} deployment · 7 хоногт ${report.last7d} зөрчил · анхаарах ${report.attention} · ${sent}` };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }
