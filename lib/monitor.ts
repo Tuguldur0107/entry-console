@@ -16,6 +16,7 @@ import { isVersionBehind } from "./sync-ref";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
 import { notify } from "./notify";
+import { runScheduledOntologyReport } from "./ontology-report-db";
 import { getBackupStatus, getCustomDomain, latestDeployment, railwayConfigured, setBackupSchedule, DEFAULT_BACKUP_KINDS, upsertVariables } from "./railway";
 
 export interface MonitorSummary {
@@ -29,6 +30,8 @@ export interface MonitorSummary {
   merged: string[];
   errors: string[];
   alertsSent: number;
+  /** Энэ ажиллагаанд хуваарьт ontology тайлан гарсан бол */
+  ontologyReport?: { last7d: number; attention: number };
 }
 
 const REALERT_MS = 6 * 60 * 60 * 1000;
@@ -206,6 +209,14 @@ export async function runMonitor(): Promise<MonitorSummary> {
   }
 
   for (const text of alerts) if (await notify(text)) summary.alertsSent += 1;
+
+  // Ontology-ийн долоо хоногийн тайлан — хуваарийн цаг болсон бол (/ontology-оос тохируулна)
+  try {
+    const report = await runScheduledOntologyReport(now);
+    if (report) summary.ontologyReport = { last7d: report.last7d, attention: report.attention };
+  } catch (error) {
+    summary.errors.push(`ontology тайлан: ${msg(error)}`);
+  }
   await db
     .insert(consoleState)
     .values({ key: "monitor.last", value: summary, updatedAt: now })

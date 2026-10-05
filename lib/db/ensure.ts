@@ -103,6 +103,17 @@ export function ensureSchema(): Promise<void> {
           "last_seen_at" timestamptz not null default now(),
           "hit_count" integer not null default 1
         )`,
+        // Ontology-ийн долоо хоногийн тайлан (lib/ontology-report.ts)
+        `create table if not exists "ontology_reports" (
+          "id" uuid primary key default gen_random_uuid(),
+          "trigger" text not null,
+          "last7d" integer not null default 0,
+          "attention" integer not null default 0,
+          "data" jsonb not null,
+          "notified" boolean not null default false,
+          "created_at" timestamptz not null default now()
+        )`,
+        `create index if not exists "ontology_reports_trigger_created_ix" on "ontology_reports" ("trigger", "created_at")`,
       ])
         await db.execute(sql.raw(ddl));
     })().catch((error) => {

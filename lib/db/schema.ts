@@ -3,7 +3,7 @@
 // барих, төлбөрийн багц). Төлбөр тооцооны хүснэгтүүд (нэхэмжлэх, төлөлт)
 // дараагийн шатанд энд нэмэгдэнэ — customers.id-д уягдана.
 import { relations } from "drizzle-orm";
-import { boolean, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
  * pending      — нээлттэй бүртгүүлэх хүсэлт (/signup); repo/Railway ХАРААХАН үүсээгүй
@@ -169,6 +169,23 @@ export const beacons = pgTable("beacons", {
   hitCount: integer("hit_count").notNull().default(1),
 });
 
+/**
+ * Ontology-ийн тайлан (lib/ontology-report.ts) — deployment бүрийн /api/health-ийн
+ * `ontology` хэсгийн агшин. Хуваарьт (долоо хоног бүр) болон гараар гаргасан нь.
+ */
+export const ontologyReports = pgTable("ontology_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** schedule | manual */
+  trigger: text("trigger").$type<"schedule" | "manual">().notNull(),
+  last7d: integer("last7d").notNull().default(0),
+  attention: integer("attention").notNull().default(0),
+  /** OntologyReport-ийн targets */
+  data: jsonb("data").notNull(),
+  /** Мэдэгдэл амжилттай илгээгдсэн эсэх (суваггүй / onlyOnIssues бол false) */
+  notified: boolean("notified").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("ontology_reports_trigger_created_ix").on(t.trigger, t.createdAt)]);
+
 export const customersRelations = relations(customers, ({ many }) => ({
   events: many(customerEvents),
 }));
@@ -180,3 +197,4 @@ export const customerEventsRelations = relations(customerEvents, ({ one }) => ({
 export type Customer = typeof customers.$inferSelect;
 export type CustomerEvent = typeof customerEvents.$inferSelect;
 export type Beacon = typeof beacons.$inferSelect;
+export type OntologyReportRow = typeof ontologyReports.$inferSelect;

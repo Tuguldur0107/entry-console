@@ -12,6 +12,7 @@ const ITEMS = [
   { href: "/subscriptions", label: "SaaS байгууллагууд", icon: Icons.activity },
   { href: "/ai-accountant", label: "AI нягтлан", icon: Icons.ai },
   { href: "/beacons", label: "Илрүүлэлт", icon: Icons.alert },
+  { href: "/ontology", label: "Ontology тайлан", icon: Icons.check },
   { href: "/settings", label: "Тохиргоо, шалгалт", icon: Icons.settings },
 ];
 

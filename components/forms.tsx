@@ -17,6 +17,8 @@ import {
   enableMonitoring,
   grantUpstream,
   runMonitorNow,
+  runOntologyReportNow,
+  saveOntologyReportSettings,
   setAutoSync,
   setCustomDomainAction,
   inviteUser,
@@ -32,6 +34,7 @@ import {
   updateCustomer,
 } from "@/lib/actions";
 import { isRequestStatus, type Customer, type CustomerStatus } from "@/lib/db/schema";
+import { WEEKDAY_LABELS, type OntologyReportSettings } from "@/lib/ontology-report";
 import { PLAN_LABELS, STATUS_LABELS } from "./ui";
 import { Icons } from "./icons";
 
@@ -587,6 +590,44 @@ export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo, pu
         </div>
       )}
       <Notice result={result} />
+    </div>
+  );
+}
+
+export function OntologyReportSettingsForm({ settings }: { settings: OntologyReportSettings }) {
+  const [result, action, pending] = useActionState(saveOntologyReportSettings, null);
+  const run = useAction();
+  return (
+    <div className="space-y-3">
+      <form action={action} className="space-y-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="enabled" defaultChecked={settings.enabled} className="h-4 w-4 accent-[var(--ea-primary)]" />
+          Долоо хоног бүр автоматаар гаргаж мэдэгдэх
+        </label>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="w-40"><select name="weekday" className="select" defaultValue={String(settings.weekday)} aria-label="Гараг">
+            {WEEKDAY_LABELS.map((label, i) => (
+              <option key={label} value={i}>{label} гараг</option>
+            ))}
+          </select></div>
+          <div className="w-28"><select name="hour" className="select" defaultValue={String(settings.hour)} aria-label="Цаг">
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+            ))}
+          </select></div>
+          <span className="text-text-3">Улаанбаатарын цагаар</span>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="onlyOnIssues" defaultChecked={settings.onlyOnIssues} className="h-4 w-4 accent-[var(--ea-primary)]" />
+          Зөвхөн зөрчил / асуудал байвал мэдэгдэх (тайлан үргэлж хадгалагдана)
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn btn-primary btn-sm" type="submit" disabled={pending}>{pending ? "…" : "Хадгалах"}</button>
+          <button className="btn btn-sm" type="button" disabled={run.pending} onClick={run.run(runOntologyReportNow)}>{run.pending ? "Гаргаж байна…" : "Одоо гаргаж илгээх"}</button>
+        </div>
+      </form>
+      <Notice result={result} />
+      <Notice result={run.result} />
     </div>
   );
 }
