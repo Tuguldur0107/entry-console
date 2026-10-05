@@ -14,7 +14,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 
-import type { AgTableProps } from "./ag-table";
+import type { AgTableProps, GridSelection } from "./ag-table";
+
+export type { GridSelection } from "./ag-table";
 
 const AgTable = dynamic(() => import("./ag-table"), { ssr: false }) as <T>(props: AgTableProps<T>) => ReactNode;
 
@@ -62,9 +64,11 @@ export type DataGridProps<T> = {
   ariaLabel: string;
   rowHeight?: number;
   empty?: ReactNode;
+  /** Мөр сонгох checkbox (утсан дээр картанд). */
+  selection?: GridSelection<T>;
 };
 
-export function DataGrid<T>({ rows, columns, getRowId, rowHref, card, ariaLabel, rowHeight = 44, empty }: DataGridProps<T>) {
+export function DataGrid<T>({ rows, columns, getRowId, rowHref, card, ariaLabel, rowHeight = 44, empty, selection }: DataGridProps<T>) {
   const mobile = useIsMobileViewport();
   if (rows.length === 0 && empty) return <>{empty}</>;
 
@@ -74,10 +78,10 @@ export function DataGrid<T>({ rows, columns, getRowId, rowHref, card, ariaLabel,
 
   return (
     <>
-      {card ? <CardList rows={rows} card={card} getRowId={getRowId} rowHref={rowHref} ariaLabel={ariaLabel} /> : null}
+      {card ? <CardList rows={rows} card={card} getRowId={getRowId} rowHref={rowHref} ariaLabel={ariaLabel} selection={selection} /> : null}
       <div className={card ? "hidden sm:block" : undefined} style={{ minHeight: placeholderHeight }}>
         {showGrid ? (
-          <AgTable rows={rows} columns={columns} getRowId={getRowId} rowHref={rowHref} rowHeight={rowHeight} height={height} ariaLabel={ariaLabel} />
+          <AgTable rows={rows} columns={columns} getRowId={getRowId} rowHref={rowHref} rowHeight={rowHeight} height={height} ariaLabel={ariaLabel} selection={selection} />
         ) : null}
       </div>
     </>
@@ -90,12 +94,14 @@ function CardList<T>({
   getRowId,
   rowHref,
   ariaLabel,
+  selection,
 }: {
   rows: T[];
   card: (row: T) => MobileCard;
   getRowId: (row: T) => string;
   rowHref?: (row: T) => string | null;
   ariaLabel: string;
+  selection?: GridSelection<T>;
 }) {
   const [limit, setLimit] = useState(CARD_PAGE);
   return (
@@ -125,7 +131,12 @@ function CardList<T>({
               ) : (
                 <div className={cls}>{body}</div>
               )}
-              {c.actions ? <div className="flex flex-wrap gap-2 border-t border-border px-3.5 py-2.5">{c.actions}</div> : null}
+              {c.actions || selection ? (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border px-3.5 py-2.5">
+                  {selection ? <SelectCheckbox row={row} id={getRowId(row)} selection={selection} /> : null}
+                  {c.actions}
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -136,5 +147,26 @@ function CardList<T>({
         </button>
       ) : null}
     </div>
+  );
+}
+
+function SelectCheckbox<T>({ row, id, selection }: { row: T; id: string; selection: GridSelection<T> }) {
+  const disabled = selection.isSelectable ? !selection.isSelectable(row) : false;
+  return (
+    <label className="flex min-h-11 items-center gap-2 text-sm text-text-2">
+      <input
+        type="checkbox"
+        className="size-4"
+        checked={selection.selected.has(id)}
+        disabled={disabled}
+        onChange={(event) => {
+          const next = new Set(selection.selected);
+          if (event.target.checked) next.add(id);
+          else next.delete(id);
+          selection.onChange(next);
+        }}
+      />
+      Сонгох
+    </label>
   );
 }

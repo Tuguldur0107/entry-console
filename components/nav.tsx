@@ -11,6 +11,7 @@ const ITEMS = [
   { href: "/customers/new", label: "Харилцагч нэмэх", icon: Icons.plus, exact: true },
   { href: "/subscriptions", label: "SaaS байгууллагууд", icon: Icons.activity },
   { href: "/ai-accountant", label: "AI нягтлан", icon: Icons.ai },
+  { href: "/emails", label: "И-мэйл", icon: Icons.mail },
   { href: "/beacons", label: "Илрүүлэлт", icon: Icons.alert },
   { href: "/settings", label: "Тохиргоо, шалгалт", icon: Icons.settings },
 ];

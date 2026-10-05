@@ -34,6 +34,7 @@ export const Icons = {
   logout: mapped("power"),
   activity: mapped("movement"),
   ai: mapped("ai"),
+  mail: mapped("mail"),
   billing: mapped("cash"),
   download: mapped("download"),
   arrowLeft: mapped("arrowLeft"),
