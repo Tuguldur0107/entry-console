@@ -4,12 +4,14 @@
 
 import { config } from "./config";
 import type { SaasBillingPayment } from "./saas-billing";
+import type { ChatActionInput, ChatMessage, ChatThread } from "./saas-chat";
 import type {
   SaasCampaign,
   SaasCampaignDetail,
   SaasCampaignResult,
   SaasTrialContactsReport,
 } from "./saas-emails";
+import type { FunnelProduct, ToolUsageReport, TrialFunnel } from "./saas-insights";
 import { withSeatPrice } from "./saas-subscriptions";
 import type {
   SaasOrgDetail,
@@ -25,7 +27,11 @@ import type {
 } from "./saas-subscriptions";
 
 export class SaasApiError extends Error {
-  constructor(message: string, readonly status: number | null = null) {
+  /**
+   * `routeMissing` — core тэр замыг ОГТ мэдэхгүй (хуучин хувилбар: JSON биш эсвэл `error`-гүй 404).
+   * Core-ийн өөрийн 404 («Байгууллага олдсонгүй» г.м.) нь false — мессежийг нь хэвээр харуулна.
+   */
+  constructor(message: string, readonly status: number | null = null, readonly routeMissing = false) {
     super(message);
     this.name = "SaasApiError";
   }
@@ -59,15 +65,15 @@ async function call<T>(
   try {
     json = (await response.json()) as typeof json;
   } catch {
-    throw new SaasApiError(`SaaS API JSON биш хариу өгөв (HTTP ${response.status})`, response.status);
+    throw new SaasApiError(`SaaS API JSON биш хариу өгөв (HTTP ${response.status})`, response.status, response.status === 404);
   }
   if (!response.ok || json.ok === false) {
     const hint =
       response.status === 401 ? " — ENTRY_SAAS_API_KEY нь core-ийн ENTRY_PLATFORM_API_KEY-тэй ижил эсэхийг шалга"
-      : response.status === 404 ? " — core сервис saas горимд биш (ENTRY_DEPLOYMENT_MODE=saas)"
+      : response.status === 404 && /saas горим/i.test(json.error ?? "") ? " (core-ийн ENTRY_DEPLOYMENT_MODE=saas)"
       : response.status === 503 ? " — core талд ENTRY_PLATFORM_API_KEY тавиагүй"
       : "";
-    throw new SaasApiError(`${json.error ?? `HTTP ${response.status}`}${hint}`, response.status);
+    throw new SaasApiError(`${json.error ?? `HTTP ${response.status}`}${hint}`, response.status, response.status === 404 && !json.error);
   }
   return json as T;
 }
@@ -210,10 +216,11 @@ export async function deleteSaasOrganization(
       { confirm, purgeUsers, actor }
     );
   } catch (error) {
-    if (error instanceof SaasApiError && (error.status === 404 || error.status === 405))
+    if (error instanceof SaasApiError && (error.routeMissing || error.status === 405))
       throw new SaasApiError(
         "Core сервисийн хувилбар байгууллага устгах замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
-        error.status
+        error.status,
+        true
       );
     throw error;
   }
@@ -285,10 +292,11 @@ const EMAILS = "/api/platform/emails";
 
 /** Core-ийн хуучин хувилбар энэ замуудыг мэдэхгүй (404) — ил алдаа. */
 function oldCore(error: unknown): never {
-  if (error instanceof SaasApiError && error.status === 404)
+  if (error instanceof SaasApiError && error.routeMissing)
     throw new SaasApiError(
       "Core сервисийн хувилбар и-мэйлийн замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
-      404
+      404,
+      true
     );
   throw error;
 }
@@ -365,4 +373,87 @@ export async function sendTestCampaignEmail(input: {
   } catch (error) {
     return oldCore(error);
   }
+}
+
+// ── Туршилтын funnel, AI tool-ийн хэрэглээ, landing чат, гүйлгээ цэвэрлэх ──────
+// Core-ийн хуучин хувилбар замыг мэдэхгүй бол ойлгомжтой алдаа — тоо зохиохгүй. Core-ийн
+// өөрийн 404 («Яриа олдсонгүй», «Байгууллага олдсонгүй») мессежээрээ дамжина.
+
+function missingRoute(feature: string) {
+  return (error: unknown): never => {
+    if (error instanceof SaasApiError && error.routeMissing)
+      throw new SaasApiError(`Core сервисийн хувилбар ${feature}-ийг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу`, 404, true);
+    throw error;
+  };
+}
+
+const TRIAL_FUNNEL = "/api/platform/trial-funnel";
+const AI_TOOL_USAGE = "/api/platform/ai-tool-usage";
+const PUBLIC_CHAT = "/api/platform/public-chat";
+
+const query = (params: Record<string, string | null | undefined>) => {
+  const entries = Object.entries(params).filter((entry): entry is [string, string] => !!entry[1]);
+  return entries.length ? `?${new URLSearchParams(entries).toString()}` : "";
+};
+
+/** Туршилтын funnel — когорт = мужид бүртгүүлсэн байгууллагууд (зөвхөн унших). */
+export async function getTrialFunnel(input: { from: string; to: string; product: FunnelProduct }): Promise<TrialFunnel> {
+  const result = await call<{ funnel: TrialFunnel }>(`${TRIAL_FUNNEL}${query(input)}`, "GET", undefined, 60_000).catch(
+    missingRoute("туршилтын funnel")
+  );
+  return { ...result.funnel, orgs: result.funnel.orgs ?? [], stages: result.funnel.stages ?? [] };
+}
+
+/** AI tool-ийн хэрэглээ — tool бүрийн дуудлага, алдаа, бичих tool-ийн саналын хувь заяа. */
+export async function getAiToolUsage(input: { from: string; to: string }): Promise<ToolUsageReport> {
+  const result = await call<{ report: ToolUsageReport }>(`${AI_TOOL_USAGE}${query(input)}`, "GET", undefined, 60_000).catch(
+    missingRoute("AI tool-ийн хэрэглээ")
+  );
+  return { ...result.report, tools: result.report.tools ?? [], unusedTools: result.report.unusedTools ?? [] };
+}
+
+export async function listChatThreads(): Promise<{ threads: ChatThread[]; unrelayed24h: number }> {
+  const result = await call<{ threads: ChatThread[]; unrelayed24h?: number }>(`${PUBLIC_CHAT}?view=threads`, "GET").catch(
+    missingRoute("landing-ийн чат")
+  );
+  return { threads: result.threads ?? [], unrelayed24h: result.unrelayed24h ?? 0 };
+}
+
+export async function getChatThread(threadId: string): Promise<{ thread: ChatThread; messages: ChatMessage[] } | null> {
+  try {
+    const result = await call<{ thread: ChatThread; messages: ChatMessage[] }>(`${PUBLIC_CHAT}${query({ threadId })}`, "GET");
+    return { thread: result.thread, messages: result.messages ?? [] };
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404 && /олдсонгүй/.test(error.message)) return null;
+    return missingRoute("landing-ийн чат")(error);
+  }
+}
+
+/** Нийтийн өрөө — нуусан мессеж ч ирнэ (hiddenAt). */
+export async function listChatRoom(): Promise<ChatMessage[]> {
+  const result = await call<{ messages: ChatMessage[] }>(`${PUBLIC_CHAT}?view=room`, "GET").catch(missingRoute("landing-ийн чат"));
+  return result.messages ?? [];
+}
+
+/** Хариу / модерац — core-ийн Telegram-тай НЭГ store функц. */
+export async function postChatAction(input: ChatActionInput, actor: string): Promise<void> {
+  await call<{ ok: true }>(PUBLIC_CHAT, "POST", { ...input, actor }).catch(missingRoute("landing-ийн чат"));
+}
+
+/**
+ * Байгууллагын ГҮЙЛГЭЭГ цэвэрлэнэ (POST /api/platform/organizations/reset) — байгууллага,
+ * гишүүд, мастер дата, тохиргоо, холболт үлдэнэ. Буцаагдахгүй; нэрээр баталгаажуулна.
+ */
+export async function resetSaasOrganization(
+  organizationId: string,
+  confirm: string,
+  actor: string
+): Promise<{ orgName: string; deleted: Record<string, number> }> {
+  const result = await call<{ orgName: string; deleted?: Record<string, number> }>(
+    `${ORGANIZATIONS}/reset${query({ id: organizationId })}`,
+    "POST",
+    { confirm, actor },
+    120_000
+  ).catch(missingRoute("гүйлгээ цэвэрлэх"));
+  return { orgName: result.orgName, deleted: result.deleted ?? {} };
 }

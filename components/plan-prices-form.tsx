@@ -20,6 +20,7 @@ import {
 import { fmtMnt } from "./ui";
 
 import { Field, Notice } from "./forms";
+import { askConfirm } from "./confirm-dialog";
 
 const priceLabel = (value: number | null | undefined) =>
   value === null || value === undefined ? "хэлэлцээрээр" : fmtMnt(value);
@@ -131,18 +132,19 @@ export function PlanPriceHistory({
   if (groups.length === 0)
     return <p className="text-sm text-text-3">Тохируулсан үнэ алга — бүх багц кодын default-аар ажиллаж байна.</p>;
   const rows = groups.flatMap((group) => group.periods);
-  const remove = (period: SaasPlanPricePeriod) =>
+  const remove = async (period: SaasPlanPricePeriod) => {
+    const status = periodStatus(period, today);
+    // Мөрдөж буй / дууссан үеийг устгавал ТЭР хугацааны сарын дүн кодын default-аар
+    // дахин бодогдоно (түүх өөрчлөгдөнө) — зөвхөн буруу оруулсныг засахад.
+    const warning =
+      status.label === "Ирээдүйд"
+        ? "Ирээдүйн энэ үнийн үеийг устгах уу?"
+        : `«${status.label}» үеийг устгавал ${period.effectiveFrom}-с хойшхи сарын дүн өөр үнээр (эсвэл кодын default-аар) дахин бодогдоно — өнгөрсөн түүх өөрчлөгдөнө.\n\nЗөвхөн БУРУУ оруулсан үнийг засах бол устгана уу. Үнэ өөрчлөх бол шинэ үе нэмнэ. Устгах уу?`;
+    if (!(await askConfirm(warning, { confirmText: "Устгах", danger: true }))) return;
     startTransition(async () => {
-      const status = periodStatus(period, today);
-      // Мөрдөж буй / дууссан үеийг устгавал ТЭР хугацааны сарын дүн кодын default-аар
-      // дахин бодогдоно (түүх өөрчлөгдөнө) — зөвхөн буруу оруулсныг засахад.
-      const warning =
-        status.label === "Ирээдүйд"
-          ? "Ирээдүйн энэ үнийн үеийг устгах уу?"
-          : `«${status.label}» үеийг устгавал ${period.effectiveFrom}-с хойшхи сарын дүн өөр үнээр (эсвэл кодын default-аар) дахин бодогдоно — өнгөрсөн түүх өөрчлөгдөнө.\n\nЗөвхөн БУРУУ оруулсан үнийг засах бол устгана уу. Үнэ өөрчлөх бол шинэ үе нэмнэ. Устгах уу?`;
-      if (!confirm(warning)) return;
       setResult(await deletePlanPriceAction(period.id));
     });
+  };
   return (
     <div className="space-y-3">
       <Notice result={result} />

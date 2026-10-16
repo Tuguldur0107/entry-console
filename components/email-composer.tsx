@@ -18,6 +18,7 @@ import {
   type SaasTrialContact,
 } from "@/lib/saas-emails";
 import { Field, Notice } from "./forms";
+import { askConfirm } from "./confirm-dialog";
 
 const newKey = () => `console-${crypto.randomUUID()}`;
 /** Модулийн түвшинд — grid-ийн rowSelection тогтвортой үлдэнэ (render бүрд шинэ функц биш). */
@@ -60,8 +61,8 @@ export function EmailComposer({
       setResult(await sendTestEmailAction({ to: testTo, organizationId: recipients[0] ?? null, subject, body }));
     });
 
-  const send = () => {
-    if (!window.confirm(`${recipients.length} хүнд «${subject.trim()}» илгээх үү? Буцаах боломжгүй.`)) return;
+  const send = async () => {
+    if (!(await askConfirm(`${recipients.length} хүнд «${subject.trim()}» илгээх үү? Буцаах боломжгүй.`, { confirmText: "Илгээх", danger: false }))) return;
     startTransition(async () => {
       const outcome = await sendCampaignAction({ organizationIds: recipients, subject, body, idempotencyKey });
       setResult(outcome);
