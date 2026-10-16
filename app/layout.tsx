@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import Link from "next/link";
 
+import { ConfirmHost } from "@/components/confirm-dialog";
 import { Icons } from "@/components/icons";
 import { MobileNav } from "@/components/mobile-nav";
 import { Nav } from "@/components/nav";
@@ -70,6 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </header>
               <main className="w-full min-w-0 flex-1 px-4 py-5 md:px-6 md:py-6 xl:px-8">{children}</main>
             </div>
+            <ConfirmHost />
           </div>
         ) : (
           <div className="min-h-screen">

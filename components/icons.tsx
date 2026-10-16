@@ -40,6 +40,11 @@ export const Icons = {
   arrowLeft: mapped("arrowLeft"),
   menu: mapped("list"),
   close: mapped("close"),
+  funnel: mapped("filter"),
+  chat: mapped("bell"),
+  tools: mapped("tune"),
+  report: mapped("report"),
+  shield: mapped("shield"),
   /** Брэндийн лого — Entry-ийн kit-д байхгүй цорын ганц глиф. */
   github: (p: P) => (
     <svg

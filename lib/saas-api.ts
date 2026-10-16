@@ -4,12 +4,14 @@
 
 import { config } from "./config";
 import type { SaasBillingPayment } from "./saas-billing";
+import type { ChatActionInput, ChatMessage, ChatThread } from "./saas-chat";
 import type {
   SaasCampaign,
   SaasCampaignDetail,
   SaasCampaignResult,
   SaasTrialContactsReport,
 } from "./saas-emails";
+import type { FunnelProduct, ToolUsageReport, TrialFunnel } from "./saas-insights";
 import { withSeatPrice } from "./saas-subscriptions";
 import type {
   SaasOrgDetail,
@@ -365,4 +367,86 @@ export async function sendTestCampaignEmail(input: {
   } catch (error) {
     return oldCore(error);
   }
+}
+
+// ── Туршилтын funnel, AI tool-ийн хэрэглээ, landing чат, гүйлгээ цэвэрлэх ──────
+// Core-ийн хуучин хувилбар замыг мэдэхгүй бол (404) ойлгомжтой алдаа — тоо зохиохгүй.
+
+function missingRoute(feature: string) {
+  return (error: unknown): never => {
+    if (error instanceof SaasApiError && error.status === 404)
+      throw new SaasApiError(`Core сервисийн хувилбар ${feature}-ийг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу`, 404);
+    throw error;
+  };
+}
+
+const TRIAL_FUNNEL = "/api/platform/trial-funnel";
+const AI_TOOL_USAGE = "/api/platform/ai-tool-usage";
+const PUBLIC_CHAT = "/api/platform/public-chat";
+
+const query = (params: Record<string, string | null | undefined>) => {
+  const entries = Object.entries(params).filter((entry): entry is [string, string] => !!entry[1]);
+  return entries.length ? `?${new URLSearchParams(entries).toString()}` : "";
+};
+
+/** Туршилтын funnel — когорт = мужид бүртгүүлсэн байгууллагууд (зөвхөн унших). */
+export async function getTrialFunnel(input: { from: string; to: string; product: FunnelProduct }): Promise<TrialFunnel> {
+  const result = await call<{ funnel: TrialFunnel }>(`${TRIAL_FUNNEL}${query(input)}`, "GET", undefined, 60_000).catch(
+    missingRoute("туршилтын funnel")
+  );
+  return { ...result.funnel, orgs: result.funnel.orgs ?? [], stages: result.funnel.stages ?? [] };
+}
+
+/** AI tool-ийн хэрэглээ — tool бүрийн дуудлага, алдаа, бичих tool-ийн саналын хувь заяа. */
+export async function getAiToolUsage(input: { from: string; to: string }): Promise<ToolUsageReport> {
+  const result = await call<{ report: ToolUsageReport }>(`${AI_TOOL_USAGE}${query(input)}`, "GET", undefined, 60_000).catch(
+    missingRoute("AI tool-ийн хэрэглээ")
+  );
+  return { ...result.report, tools: result.report.tools ?? [], unusedTools: result.report.unusedTools ?? [] };
+}
+
+export async function listChatThreads(): Promise<{ threads: ChatThread[]; unrelayed24h: number }> {
+  const result = await call<{ threads: ChatThread[]; unrelayed24h?: number }>(`${PUBLIC_CHAT}?view=threads`, "GET").catch(
+    missingRoute("landing-ийн чат")
+  );
+  return { threads: result.threads ?? [], unrelayed24h: result.unrelayed24h ?? 0 };
+}
+
+export async function getChatThread(threadId: string): Promise<{ thread: ChatThread; messages: ChatMessage[] } | null> {
+  try {
+    const result = await call<{ thread: ChatThread; messages: ChatMessage[] }>(`${PUBLIC_CHAT}${query({ threadId })}`, "GET");
+    return { thread: result.thread, messages: result.messages ?? [] };
+  } catch (error) {
+    if (error instanceof SaasApiError && error.status === 404 && /Яриа олдсонгүй/.test(error.message)) return null;
+    return missingRoute("landing-ийн чат")(error);
+  }
+}
+
+/** Нийтийн өрөө — нуусан мессеж ч ирнэ (hiddenAt). */
+export async function listChatRoom(): Promise<ChatMessage[]> {
+  const result = await call<{ messages: ChatMessage[] }>(`${PUBLIC_CHAT}?view=room`, "GET").catch(missingRoute("landing-ийн чат"));
+  return result.messages ?? [];
+}
+
+/** Хариу / модерац — core-ийн Telegram-тай НЭГ store функц. */
+export async function postChatAction(input: ChatActionInput, actor: string): Promise<void> {
+  await call<{ ok: true }>(PUBLIC_CHAT, "POST", { ...input, actor }).catch(missingRoute("landing-ийн чат"));
+}
+
+/**
+ * Байгууллагын ГҮЙЛГЭЭГ цэвэрлэнэ (POST /api/platform/organizations/reset) — байгууллага,
+ * гишүүд, мастер дата, тохиргоо, холболт үлдэнэ. Буцаагдахгүй; нэрээр баталгаажуулна.
+ */
+export async function resetSaasOrganization(
+  organizationId: string,
+  confirm: string,
+  actor: string
+): Promise<{ orgName: string; deleted: Record<string, number> }> {
+  const result = await call<{ orgName: string; deleted?: Record<string, number> }>(
+    `${ORGANIZATIONS}/reset${query({ id: organizationId })}`,
+    "POST",
+    { confirm, actor },
+    120_000
+  ).catch(missingRoute("гүйлгээ цэвэрлэх"));
+  return { orgName: result.orgName, deleted: result.deleted ?? {} };
 }

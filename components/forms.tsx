@@ -36,6 +36,7 @@ import {
 import { isRequestStatus, type Customer, type CustomerStatus } from "@/lib/db/schema";
 import { WEEKDAY_LABELS, type OntologyReportSettings } from "@/lib/ontology-report";
 import { PLAN_LABELS, STATUS_LABELS } from "./ui";
+import { askConfirm } from "./confirm-dialog";
 import { Icons } from "./icons";
 
 export function Notice({ result }: { result: ActionResult | null }) {
@@ -216,7 +217,7 @@ export function SyncAllButton({ latestTag, count }: { latestTag: string | null; 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button className="btn btn-sm" disabled={pending || !latestTag || count === 0} title={`${count} идэвхтэй харилцагчид ${latestTag ?? ""} sync`}
-        onClick={() => { if (!confirm(`${count} харилцагчийн repo дээр ${latestTag} sync PR нээх үү?`)) return; start(async () => { const r = await syncAllCustomers(); setResult(r); if (r.ok) router.refresh(); }); }}>
+        onClick={async () => { if (!(await askConfirm(`${count} харилцагчийн repo дээр ${latestTag} sync PR нээх үү?`))) return; start(async () => { const r = await syncAllCustomers(); setResult(r); if (r.ok) router.refresh(); }); }}>
         <Icons.refresh className="h-4 w-4" /> {pending ? "…" : `Бүгдийг ${latestTag ?? "—"} болгох`}
       </button>
       <Notice result={result} />
@@ -239,8 +240,8 @@ export function AutoSyncAllButton({ off }: { off: number }) {
         className="btn btn-sm"
         disabled={pending}
         title="Шалгалт давсан sync PR-ыг автоматаар merge хийнэ — conflict гарвал гараар шийднэ"
-        onClick={() => {
-          if (!confirm(`${off} харилцагчид авто sync асаах уу?\n\nШинэ release гармагц PR нээгдэж, tsc/lint/тест давсан бол автоматаар merge хийгдэнэ. Conflict гарвал merge хийхгүй — гараар шийднэ.`)) return;
+        onClick={async () => {
+          if (!(await askConfirm(`${off} харилцагчид авто sync асаах уу?\n\nШинэ release гармагц PR нээгдэж, tsc/lint/тест давсан бол автоматаар merge хийгдэнэ. Conflict гарвал merge хийхгүй — гараар шийднэ.`))) return;
           start(async () => {
             const r = await setAutoSyncAll(true);
             setResult(r);
@@ -259,8 +260,8 @@ export function StatusActions({ slug, status }: { slug: string; status: Customer
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
-  const go = (next: CustomerStatus, msg: string) => () => {
-    if (!confirm(msg)) return;
+  const go = (next: CustomerStatus, msg: string) => async () => {
+    if (!(await askConfirm(msg))) return;
     start(async () => { const r = await setCustomerStatus(slug, next); setResult(r); if (r.ok) router.refresh(); });
   };
   return (
@@ -289,7 +290,7 @@ export function DeployPanel({ slug, deployed, connected, autoDeploy, blocker, de
             <Icons.rocket className="h-4 w-4" /> {pending ? "Үүсгэж байна…" : deployed ? "Repo холбож deploy" : deployError ? "Дахин оролдох" : "Railway-д deploy"}
           </button>
         ) : (
-          <button className="btn" disabled={pending} onClick={() => { if (!confirm("Сүүлийн commit-оор дахин deploy хийх үү?")) return; run(() => redeployCustomer(slug))(); }}>
+          <button className="btn" disabled={pending} onClick={async () => { if (!(await askConfirm("Сүүлийн commit-оор дахин deploy хийх үү?"))) return; run(() => redeployCustomer(slug))(); }}>
             <Icons.refresh className="h-4 w-4" /> {pending ? "…" : "Дахин deploy"}
           </button>
         )}
@@ -400,7 +401,7 @@ export function MonitorButtons({ hasCron, hasKey }: { hasCron: boolean; hasKey: 
       <div className="flex flex-wrap gap-2">
         {!hasCron && <button className="btn btn-primary btn-sm" disabled={pending} onClick={run(enableMonitoring)}>{pending ? "…" : `Хяналт идэвхжүүлэх (5 мин тутам)${hasKey ? "" : " + API түлхүүр үүсгэх"}`}</button>}
         <button className="btn btn-sm" disabled={pending} onClick={run(runMonitorNow)}>{pending ? "Шалгаж байна…" : "Одоо шалгах"}</button>
-        <button className="btn btn-sm btn-ghost" disabled={pending} onClick={() => { if (!confirm("Ямар ч service-д холбоогүй volume-уудыг Railway-аас устгах уу? (өгөгдөл нь алга болно)")) return; run(cleanupOrphanVolumes)(); }}>Салангид volume цэвэрлэх</button>
+        <button className="btn btn-sm btn-ghost" disabled={pending} onClick={async () => { if (!(await askConfirm("Ямар ч service-д холбоогүй volume-уудыг Railway-аас устгах уу? (өгөгдөл нь алга болно)"))) return; run(cleanupOrphanVolumes)(); }}>Салангид volume цэвэрлэх</button>
       </div>
       <Notice result={result} />
     </div>
@@ -457,7 +458,7 @@ export function QuickApproveButton({ slug }: { slug: string }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <button className="btn btn-sm btn-primary" disabled={pending}
-        onClick={() => { if (!confirm("Батлах уу? GitHub repo + Railway app/DB автоматаар үүснэ (~5 мин).")) return; start(async () => { const r = await approveRequestQuick(slug); setResult(r); if (r.ok) router.refresh(); }); }}>
+        onClick={async () => { if (!(await askConfirm("Батлах уу? GitHub repo + Railway app/DB автоматаар үүснэ (~5 мин)."))) return; start(async () => { const r = await approveRequestQuick(slug); setResult(r); if (r.ok) router.refresh(); }); }}>
         <Icons.check className="h-4 w-4" /> {pending ? "…" : "Батлах"}
       </button>
       {result && !result.ok && <span className="text-xs text-danger">{result.error}</span>}
@@ -517,7 +518,7 @@ export function RejectForm({ slug }: { slug: string }) {
     <div className="space-y-2">
       <input className="input" placeholder="Шалтгаан (заавал биш)" value={reason} onChange={(e) => setReason(e.target.value)} />
       <button className="btn btn-sm btn-danger" disabled={pending}
-        onClick={() => { if (!confirm("Хүсэлтийг татгалзах уу? Бүртгэл лавлагаанд үлдэнэ, дараа нь батлах боломжтой.")) return; start(async () => { const r = await rejectRequestAction(slug, reason); setResult(r); if (r.ok) router.refresh(); }); }}>
+        onClick={async () => { if (!(await askConfirm("Хүсэлтийг татгалзах уу? Бүртгэл лавлагаанд үлдэнэ, дараа нь батлах боломжтой."))) return; start(async () => { const r = await rejectRequestAction(slug, reason); setResult(r); if (r.ok) router.refresh(); }); }}>
         {pending ? "…" : "Татгалзах"}
       </button>
       <Notice result={result} />
@@ -533,7 +534,7 @@ export function DeleteRequestButton({ slug }: { slug: string }) {
   return (
     <div className="space-y-2">
       <button className="btn btn-sm btn-danger" disabled={pending}
-        onClick={() => { if (!confirm("Хүсэлтийг бүрмөсөн устгах уу?")) return; start(async () => { const r = await destroyCustomerAction(slug, slug); setResult(r); if (r.ok) router.push("/customers?status=pending"); }); }}>
+        onClick={async () => { if (!(await askConfirm("Хүсэлтийг бүрмөсөн устгах уу?"))) return; start(async () => { const r = await destroyCustomerAction(slug, slug); setResult(r); if (r.ok) router.push("/customers?status=pending"); }); }}>
         {pending ? "…" : "Хүсэлт устгах"}
       </button>
       <Notice result={result} />
@@ -581,7 +582,7 @@ export function UpstreamAccessPanel({ slug, granted, keyOnCore, secretOnRepo, pu
           {granted ? (
             <>
               <button className="btn btn-sm btn-danger" disabled={pending} onClick={() => setConfirming(true)}>Эрх цуцлах</button>
-              <button className="btn btn-sm" disabled={pending} onClick={() => { if (!confirm("Түлхүүрийг шинэчлэх үү? Хуучин түлхүүр ажиллахаа болино.")) return; run(() => grantUpstream(slug)); }}>{pending ? "…" : "Түлхүүр шинэчлэх"}</button>
+              <button className="btn btn-sm" disabled={pending} onClick={async () => { if (!(await askConfirm("Түлхүүрийг шинэчлэх үү? Хуучин түлхүүр ажиллахаа болино."))) return; run(() => grantUpstream(slug)); }}>{pending ? "…" : "Түлхүүр шинэчлэх"}</button>
               <button className="btn btn-sm" disabled={pending} title="Харилцагчийн sync workflow-г core-ийнхтэй тэнцүүлнэ — хуучин суулгацад нэг удаа хэрэгтэй" onClick={() => run(() => bootstrapWorkflow(slug))}>{pending ? "…" : "Workflow тэнцүүлэх"}</button>
             </>
           ) : (

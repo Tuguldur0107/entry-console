@@ -25,6 +25,8 @@ import {
   issueSupportSession,
   SaasApiError,
   deleteSaasOrganization,
+  postChatAction,
+  resetSaasOrganization,
   saveSaasSubscription,
   sendCampaign,
   sendTestCampaignEmail,
@@ -32,6 +34,7 @@ import {
 } from "./saas-api";
 import { parsePlanPricePeriodForm, parsePriceField, parseSaasSubscriptionForm } from "./saas-subscriptions";
 import { parseSupportRequest } from "./saas-orgs";
+import { CHAT_ACTION_DONE, parseChatAction } from "./saas-chat";
 import { enableMonitoringCore, SetupError } from "./monitoring-setup";
 import { runOntologyReport, saveReportSettings } from "./ontology-report-db";
 import { parseReportSettingsForm, WEEKDAY_LABELS } from "./ontology-report";
@@ -880,6 +883,41 @@ export async function sendCampaignAction(input: {
       message: `${result.duplicate ? "Өмнө илгээгдсэн — дахин илгээгээгүй: " : ""}${parts.join(", ")}`,
       campaignId: result.campaignId,
     };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/**
+ * Байгууллагын ГҮЙЛГЭЭГ цэвэрлэх — core-ийн POST /api/platform/organizations/reset.
+ * Мастер дата, тохиргоо, гишүүд ҮЛДЭНЭ; буцаагдахгүй, нэрээр баталгаажуулна.
+ */
+export async function resetSaasOrganizationAction(organizationId: string, confirmName: string): Promise<ActionResult> {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/i.test(organizationId)) return { ok: false, error: "Байгууллагын ID буруу" };
+  if (!confirmName.trim()) return { ok: false, error: "Баталгаажуулахын тулд нэрийг яг бичнэ" };
+  try {
+    const result = await resetSaasOrganization(organizationId, confirmName, "console");
+    const rows = Object.values(result.deleted).reduce((sum, n) => sum + (Number(n) || 0), 0);
+    revalidatePath(`/subscriptions/${organizationId}`);
+    revalidatePath("/subscriptions");
+    return { ok: true, message: `«${result.orgName}»-ийн гүйлгээ цэвэрлэгдлээ — ${rows.toLocaleString("en-US")} мөр устлаа` };
+  } catch (error) {
+    return { ok: false, error: errorText(error) };
+  }
+}
+
+/** Landing-ийн чат: хариу, нийтлэл, нуух, хаах — core-ийн Telegram-тай НЭГ store. */
+export async function chatAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  await requireSession();
+  const raw: Record<string, string> = {};
+  for (const key of ["action", "threadId", "messageId", "visitorId", "replyToId", "body"]) raw[key] = String(formData.get(key) ?? "");
+  const parsed = parseChatAction(raw);
+  if ("error" in parsed) return { ok: false, error: parsed.error };
+  try {
+    await postChatAction(parsed, "console");
+    revalidatePath("/chat");
+    return { ok: true, message: CHAT_ACTION_DONE[parsed.action] };
   } catch (error) {
     return { ok: false, error: errorText(error) };
   }

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { BillingPaymentsGrid } from "@/components/grids/billing-payments-grid";
 import { MembersGrid } from "@/components/grids/members-grid";
-import { SaasOrgDangerZone } from "@/components/saas-org-danger";
+import { SaasOrgDangerZone, SaasOrgResetZone } from "@/components/saas-org-danger";
 import { SupportAccessSection } from "@/components/support-access";
 import { SubscriptionForm } from "@/components/subscription-form";
 import { fmtDate, fmtMnt, PageHeader, Section } from "@/components/ui";
@@ -149,8 +149,12 @@ export default async function SubscriptionDetailPage({ params }: { params: Promi
             </Section>
           ) : null}
 
-          <Section title="Аюултай бүс" sub="Туршилтын эсвэл гэрээ дууссан байгууллагыг core сервисээс цэвэрлэх">
-            <SaasOrgDangerZone organizationId={row.organizationId} orgName={row.orgName} memberCount={row.memberCount} />
+          <Section title="Аюултай бүс" sub="Буцаагдахгүй — нэрээр баталгаажуулна">
+            <div className="space-y-4">
+              <SaasOrgResetZone organizationId={row.organizationId} orgName={row.orgName} />
+              <div className="divider" />
+              <SaasOrgDangerZone organizationId={row.organizationId} orgName={row.orgName} memberCount={row.memberCount} />
+            </div>
           </Section>
         </div>
 

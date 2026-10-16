@@ -79,7 +79,10 @@ body {
 a { color: inherit; }
 * { border-color: var(--ea-border); }
 
-h1, h2, .kpi-value {
+/* Fraunces зөвхөн латин (кирилл глифгүй) — монгол гарчиг serif fallback руу унадаг байв.
+   Гарчиг Geist (кирилл), Fraunces зөвхөн KPI-ийн тоонд. */
+h1, h2 { font-family: var(--ea-font-sans); letter-spacing: -0.015em; }
+.kpi-value {
   font-family: var(--ea-font-display);
   letter-spacing: -0.01em;
 }
@@ -211,6 +214,10 @@ h1, h2, .kpi-value {
   font-weight: 500;
 }
 .nav-link svg { flex-shrink: 0; }
+.nav-group {
+  padding: 0 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ea-text-4);
+}
 
 .divider { height: 1px; background: var(--ea-border); }
 .mono { font-family: var(--ea-font-mono); font-size: 12.5px; }
@@ -285,3 +292,34 @@ h1, h2, .kpi-value {
 /* Нүдэн доторх товч нүдээ дүүргэж сунахгүй (AG Grid нүдэнд line-height = мөрийн өндөр өгдөг) */
 .ea-data-grid .ag-cell .btn { align-self: center; height: auto; min-height: 30px; line-height: 1.2; padding-top: 5px; padding-bottom: 5px; }
 .ea-data-grid .ag-cell form { display: flex; align-items: center; }
+
+/* Туршилтын funnel / хэрэглээний мөр — өргөн нь хувь, өнгө нь токен */
+.funnel-track { height: 10px; border-radius: 999px; background: var(--ea-bg-2); overflow: hidden; }
+.funnel-bar {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--ea-primary) 0%, var(--ea-accent) 100%);
+  transition: width var(--ea-motion-lift) var(--ea-ease-standard);
+}
+.funnel-bar[data-tone="danger"] { background: var(--ea-danger); }
+.funnel-bar[data-tone="warning"] { background: var(--ea-warning); }
+
+/* Landing чат — ярианы жагсаалт ба мессеж */
+.chat-thread-link {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px;
+  transition: background-color var(--ea-motion-hover) var(--ea-ease-standard);
+}
+.chat-thread-link:hover { background: var(--ea-hover-subtle); }
+.chat-thread-link[data-active="true"] { background: var(--ea-selected-bg); box-shadow: inset 2px 0 0 var(--ea-interactive); }
+.chat-bubble {
+  max-width: min(560px, 88%);
+  padding: 8px 12px; border-radius: var(--ea-r-lg);
+  background: var(--ea-bg-2); border: 1px solid var(--ea-border);
+}
+.chat-bubble[data-team="true"] { background: var(--ea-accent-bg); border-color: color-mix(in srgb, var(--ea-accent) 22%, transparent); }
+.chat-bubble[data-hidden="true"] { opacity: 0.6; }
+.chat-quote { border-left: 2px solid var(--ea-border-strong); padding-left: 8px; }
+/* Мессежийн үйлдэл — хулганатай төхөөрөмжид hover/focus үед л (утсанд үргэлж) */
+@media (hover: hover) and (pointer: fine) {
+  .chat-bubble .chat-actions { opacity: 0; transition: opacity var(--ea-motion-hover) var(--ea-ease-standard); }
+  .chat-bubble:hover .chat-actions, .chat-bubble:focus-within .chat-actions { opacity: 1; }
+}

@@ -9,7 +9,7 @@ import { config } from "@/lib/config";
 import { toCustomerGridRow } from "@/lib/customer-grid";
 import { autoSyncStats, computeAttention, loadDashboard, loadRecentActivity } from "@/lib/customers";
 import { isRequestStatus } from "@/lib/db/schema";
-import { listSaasSubscriptions, saasApiConfigured } from "@/lib/saas-api";
+import { listChatThreads, listSaasSubscriptions, saasApiConfigured } from "@/lib/saas-api";
 import { computeSaasAttention } from "@/lib/saas-attention";
 import { summarizeRevenue, summarizeSaasRows, type SaasSubscriptionRow } from "@/lib/saas-subscriptions";
 
@@ -18,10 +18,11 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   await requireSession();
-  const [{ latest, customers, provisioning, githubErrors }, activity, saas] = await Promise.all([
+  const [{ latest, customers, provisioning, githubErrors }, activity, saas, chatAwaiting] = await Promise.all([
     loadDashboard(),
     loadRecentActivity(10),
     loadSaasOverview(),
+    loadChatAwaiting(),
   ]);
   const requests = customers.filter((c) => c.customer.status === "pending");
   const visible = customers.filter((c) => c.customer.status !== "archived" && !isRequestStatus(c.customer.status));
@@ -53,6 +54,13 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      {chatAwaiting > 0 ? (
+        <Link href="/chat?filter=awaiting" className="notice notice-info flex items-center justify-between gap-3 hover:opacity-90">
+          <span><strong>Landing чат</strong> — {chatAwaiting} яриа хариу хүлээж байна</span>
+          <span className="text-xs">Хариулах →</span>
+        </Link>
+      ) : null}
+
       {requests.length > 0 && (
         <Section title="Бүртгүүлэх хүсэлт" sub={`${requests.length} хүлээгдэж байна · батлахад repo + Railway автоматаар үүснэ`} right={<Link href="/customers?status=pending" className="btn btn-ghost btn-sm">Бүгд</Link>}>
           <ul className="divide-y divide-border">
@@ -74,7 +82,7 @@ export default async function DashboardPage() {
         </Section>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Идэвхтэй харилцагч" value={String(active.length)} sub={`нийт ${visible.length}${provisioning.length ? ` · үүсгэж байна ${provisioning.length}` : ""}${requests.length ? ` · хүсэлт ${requests.length}` : ""}`} href="/customers" />
         <Kpi label="Сарын орлого (MRR)" value={fmtMnt(mrr + saasRevenue.mrrMnt)} sub={`тусдаа сервис ${fmtMnt(mrr)} · SaaS ${fmtMnt(saasRevenue.mrrMnt)}${saasRevenue.unknown ? ` · ${saasRevenue.unknown} дүн тодорхойгүй` : ""}`} tone={saasRevenue.unknown ? "warning" : undefined} href="/subscriptions/pricing" />
         <Kpi label="Хоцорсон хувилбар" value={String(behindCount)} tone={behindCount > 0 ? "warning" : "success"} sub={`${latest ? `core ${latest.tagName} · ` : ""}авто sync ${sync.on}/${sync.eligible}`} />
@@ -187,5 +195,16 @@ async function loadSaasOverview(): Promise<{ rows: SaasSubscriptionRow[]; error:
     return { rows: await listSaasSubscriptions(), error: null };
   } catch (caught) {
     return { rows: [], error: caught instanceof Error ? caught.message : String(caught) };
+  }
+}
+
+/** Хариу хүлээж буй нээлттэй яриа — чат унтарсан / хуучин core бол 0 (самбар унахгүй). */
+async function loadChatAwaiting(): Promise<number> {
+  if (!saasApiConfigured()) return 0;
+  try {
+    const { threads } = await listChatThreads();
+    return threads.filter((thread) => thread.awaitingReply && thread.status === "open").length;
+  } catch {
+    return 0;
   }
 }
