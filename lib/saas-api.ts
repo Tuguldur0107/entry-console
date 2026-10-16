@@ -27,7 +27,11 @@ import type {
 } from "./saas-subscriptions";
 
 export class SaasApiError extends Error {
-  constructor(message: string, readonly status: number | null = null) {
+  /**
+   * `routeMissing` — core тэр замыг ОГТ мэдэхгүй (хуучин хувилбар: JSON биш эсвэл `error`-гүй 404).
+   * Core-ийн өөрийн 404 («Байгууллага олдсонгүй» г.м.) нь false — мессежийг нь хэвээр харуулна.
+   */
+  constructor(message: string, readonly status: number | null = null, readonly routeMissing = false) {
     super(message);
     this.name = "SaasApiError";
   }
@@ -61,15 +65,15 @@ async function call<T>(
   try {
     json = (await response.json()) as typeof json;
   } catch {
-    throw new SaasApiError(`SaaS API JSON биш хариу өгөв (HTTP ${response.status})`, response.status);
+    throw new SaasApiError(`SaaS API JSON биш хариу өгөв (HTTP ${response.status})`, response.status, response.status === 404);
   }
   if (!response.ok || json.ok === false) {
     const hint =
       response.status === 401 ? " — ENTRY_SAAS_API_KEY нь core-ийн ENTRY_PLATFORM_API_KEY-тэй ижил эсэхийг шалга"
-      : response.status === 404 ? " — core сервис saas горимд биш (ENTRY_DEPLOYMENT_MODE=saas)"
+      : response.status === 404 && /saas горим/i.test(json.error ?? "") ? " (core-ийн ENTRY_DEPLOYMENT_MODE=saas)"
       : response.status === 503 ? " — core талд ENTRY_PLATFORM_API_KEY тавиагүй"
       : "";
-    throw new SaasApiError(`${json.error ?? `HTTP ${response.status}`}${hint}`, response.status);
+    throw new SaasApiError(`${json.error ?? `HTTP ${response.status}`}${hint}`, response.status, response.status === 404 && !json.error);
   }
   return json as T;
 }
@@ -212,10 +216,11 @@ export async function deleteSaasOrganization(
       { confirm, purgeUsers, actor }
     );
   } catch (error) {
-    if (error instanceof SaasApiError && (error.status === 404 || error.status === 405))
+    if (error instanceof SaasApiError && (error.routeMissing || error.status === 405))
       throw new SaasApiError(
         "Core сервисийн хувилбар байгууллага устгах замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
-        error.status
+        error.status,
+        true
       );
     throw error;
   }
@@ -287,10 +292,11 @@ const EMAILS = "/api/platform/emails";
 
 /** Core-ийн хуучин хувилбар энэ замуудыг мэдэхгүй (404) — ил алдаа. */
 function oldCore(error: unknown): never {
-  if (error instanceof SaasApiError && error.status === 404)
+  if (error instanceof SaasApiError && error.routeMissing)
     throw new SaasApiError(
       "Core сервисийн хувилбар и-мэйлийн замыг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу",
-      404
+      404,
+      true
     );
   throw error;
 }
@@ -370,12 +376,13 @@ export async function sendTestCampaignEmail(input: {
 }
 
 // ── Туршилтын funnel, AI tool-ийн хэрэглээ, landing чат, гүйлгээ цэвэрлэх ──────
-// Core-ийн хуучин хувилбар замыг мэдэхгүй бол (404) ойлгомжтой алдаа — тоо зохиохгүй.
+// Core-ийн хуучин хувилбар замыг мэдэхгүй бол ойлгомжтой алдаа — тоо зохиохгүй. Core-ийн
+// өөрийн 404 («Яриа олдсонгүй», «Байгууллага олдсонгүй») мессежээрээ дамжина.
 
 function missingRoute(feature: string) {
   return (error: unknown): never => {
-    if (error instanceof SaasApiError && error.status === 404)
-      throw new SaasApiError(`Core сервисийн хувилбар ${feature}-ийг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу`, 404);
+    if (error instanceof SaasApiError && error.routeMissing)
+      throw new SaasApiError(`Core сервисийн хувилбар ${feature}-ийг мэдэхгүй байна — entry-accounting-ийг шинэчлээд дахин оролдоно уу`, 404, true);
     throw error;
   };
 }
@@ -417,7 +424,7 @@ export async function getChatThread(threadId: string): Promise<{ thread: ChatThr
     const result = await call<{ thread: ChatThread; messages: ChatMessage[] }>(`${PUBLIC_CHAT}${query({ threadId })}`, "GET");
     return { thread: result.thread, messages: result.messages ?? [] };
   } catch (error) {
-    if (error instanceof SaasApiError && error.status === 404 && /Яриа олдсонгүй/.test(error.message)) return null;
+    if (error instanceof SaasApiError && error.status === 404 && /олдсонгүй/.test(error.message)) return null;
     return missingRoute("landing-ийн чат")(error);
   }
 }

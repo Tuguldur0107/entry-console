@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useRef } from "react";
 
 import { chatAction, type ActionResult } from "@/lib/actions";
@@ -25,9 +26,14 @@ export function ChatComposer({
 }) {
   const [result, action, pending] = useActionState<ActionResult | null, FormData>(chatAction, null);
   const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  const replyingTo = replyTo?.id;
   useEffect(() => {
-    if (result?.ok) formRef.current?.reset();
-  }, [result]);
+    if (!result?.ok) return;
+    formRef.current?.reset();
+    // Хариулт нийтлэгдсэн — `?reply=` арилгана, эс бөгөөс дараагийн нийтлэл ч тэр мессежийн хариу болно.
+    if (replyingTo && cancelReplyHref) router.replace(cancelReplyHref, { scroll: false });
+  }, [result, replyingTo, cancelReplyHref, router]);
 
   return (
     <form ref={formRef} action={action} className="space-y-2">
