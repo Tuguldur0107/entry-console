@@ -23,6 +23,9 @@ import {
   type SaasPlanPricePeriod,
   type SaasSubscriptionRow,
   SAAS_ASSIGNABLE_PLANS,
+  SAAS_PLAN_LABELS,
+  SAAS_PRICEABLE_PLANS,
+  isSaasPlanId,
   SAAS_STATUSES,
   SUBSCRIPTION_PRESETS,
   presetOverridesJson,
@@ -375,4 +378,11 @@ test("нэг компанийн preset нь companies override ТАВИХГҮЙ"
 test("preset-ийн түлхүүр давхардахгүй", () => {
   const keys = SUBSCRIPTION_PRESETS.map((p) => p.key);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+test("academy багц: Console-оос оноох, үнэ тогтоох боломжтой (core plans.ts-тэй ижил)", () => {
+  assert.ok(isSaasPlanId("academy"));
+  assert.ok(SAAS_ASSIGNABLE_PLANS.includes("academy"));
+  assert.ok(SAAS_PRICEABLE_PLANS.includes("academy"));
+  assert.equal(SAAS_PLAN_LABELS.academy, "Entry Academy (AI багш)");
 });

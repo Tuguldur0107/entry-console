@@ -11,6 +11,7 @@ import {
   fmtRate,
   FUNNEL_PRODUCTS,
   parseDays,
+  parseFunnelProduct,
   RANGE_OPTIONS,
   rangeForDays,
   type FunnelProduct,
@@ -24,7 +25,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
   await requireSession();
   const params = await searchParams;
   const days = parseDays(params.days, 90);
-  const product: FunnelProduct = params.product === "skills" ? "skills" : "accounting";
+  const product: FunnelProduct = parseFunnelProduct(params.product);
   const range = rangeForDays(days);
 
   let funnel: TrialFunnel | null = null;
