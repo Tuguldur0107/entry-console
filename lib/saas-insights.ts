@@ -4,12 +4,18 @@
 // Core-ийн хуучин хувилбар талбар дутуу ирүүлж болох тул тоо ЗОХИОХГҮЙ: алга бол null / «—».
 
 export type FunnelStageKey = "signed_up" | "connected" | "master_data" | "first_journal" | "paid";
-export type FunnelProduct = "accounting" | "skills";
+export type FunnelProduct = "accounting" | "skills" | "academy";
 
 export const FUNNEL_PRODUCTS: { value: FunnelProduct; label: string }[] = [
   { value: "accounting", label: "Нягтлан бодох систем" },
   { value: "skills", label: "AI нягтлан" },
+  { value: "academy", label: "Entry Academy" },
 ];
+
+/** URL-ийн `?product=` → бүтээгдэхүүн; танихгүй бол нягтлан бодох систем. */
+export function parseFunnelProduct(value: unknown): FunnelProduct {
+  return FUNNEL_PRODUCTS.find((p) => p.value === value)?.value ?? "accounting";
+}
 
 export const FUNNEL_STAGE_LABELS: Record<FunnelStageKey, string> = {
   signed_up: "Бүртгүүлсэн",

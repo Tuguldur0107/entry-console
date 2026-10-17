@@ -9,6 +9,7 @@ import {
   fmtRate,
   parseDays,
   rangeForDays,
+  parseFunnelProduct,
   stageDate,
   totalWriteAcceptance,
   writeAcceptance,
@@ -100,4 +101,11 @@ test("алдааны өнгө ба бичих tool-ийн хүлээн авал�
     rate: 0.4,
   });
   assert.deepEqual(totalWriteAcceptance([tool(null)]), { suggestions: 0, rate: null });
+});
+
+test("parseFunnelProduct: academy танигдана, танихгүй бол нягтлан бодох систем", () => {
+  assert.equal(parseFunnelProduct("academy"), "academy");
+  assert.equal(parseFunnelProduct("skills"), "skills");
+  assert.equal(parseFunnelProduct("x"), "accounting");
+  assert.equal(parseFunnelProduct(undefined), "accounting");
 });

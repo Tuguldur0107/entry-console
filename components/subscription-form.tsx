@@ -82,7 +82,11 @@ export function SubscriptionForm({ row }: { row: SaasSubscriptionRow }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Багц *" hint="«Тусдаа сервис» нь лицензээр — SaaS-д оноохгүй">
-          <select name="plan_id" className="select" defaultValue={SAAS_ASSIGNABLE_PLANS.includes(row.planId) ? row.planId : "standard"}>
+          {/* Жагсаалтад алга багцыг (core-ийн шинэ багц г.м.) «standard» болгохгүй — хадгалахад чимээгүй солигдоно */}
+          <select name="plan_id" className="select" defaultValue={row.planId}>
+            {SAAS_ASSIGNABLE_PLANS.includes(row.planId) ? null : (
+              <option value={row.planId}>{SAAS_PLAN_LABELS[row.planId] ?? row.planId}</option>
+            )}
             {SAAS_ASSIGNABLE_PLANS.map((plan) => (
               <option key={plan} value={plan}>{SAAS_PLAN_LABELS[plan]}</option>
             ))}
