@@ -7,7 +7,7 @@ import { startTransition, useActionState, useEffect, useRef } from "react";
 import { chatAction, type ActionResult } from "@/lib/actions";
 import { CHAT_BODY_MAX, type ChatAction } from "@/lib/saas-chat";
 
-import { askConfirm } from "./confirm-dialog";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Notice } from "./forms";
 
 /** Хувийн ярианд хариу / нийтийн өрөөнд «Entry баг»-аар нийтлэх. Амжилттай бол талбар цэвэрлэгдэнэ. */

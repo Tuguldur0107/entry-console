@@ -9,7 +9,9 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "ui-kit:sync": "node scripts/sync-ui-kit.mjs",
+    "ui-kit:check": "node scripts/sync-ui-kit.mjs --check"
   },
   "dependencies": {
     "ag-grid-community": "^35.3.1",

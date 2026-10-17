@@ -41,7 +41,7 @@ export const Icons = {
   menu: mapped("list"),
   close: mapped("close"),
   funnel: mapped("filter"),
-  chat: mapped("bell"),
+  chat: mapped("chat"),
   tools: mapped("tune"),
   report: mapped("report"),
   shield: mapped("shield"),

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import Link from "next/link";
 
-import { ConfirmHost } from "@/components/confirm-dialog";
+import { ConfirmHost } from "@/components/ui/confirm-dialog";
 import { Icons } from "@/components/icons";
 import { MobileNav } from "@/components/mobile-nav";
 import { Nav } from "@/components/nav";

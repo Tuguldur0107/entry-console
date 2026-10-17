@@ -20,7 +20,7 @@ import {
 import { fmtMnt } from "./ui";
 
 import { Field, Notice } from "./forms";
-import { askConfirm } from "./confirm-dialog";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 const priceLabel = (value: number | null | undefined) =>
   value === null || value === undefined ? "хэлэлцээрээр" : fmtMnt(value);

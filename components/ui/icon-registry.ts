@@ -15,6 +15,7 @@ import {
   Boxes,
   Building,
   Building2,
+  LogOut,
   Calculator,
   CalendarClock,
   Check,
@@ -51,6 +52,7 @@ import {
   Lock,
   LockOpen,
   Mail,
+  MessageSquare,
   Maximize2,
   Minimize2,
   Minus,
@@ -164,6 +166,7 @@ export const ICONS = {
   ai: Sparkles,
   bank: Landmark,
   cash: WalletCards,
+  chat: MessageSquare,
   company: Building2,
   costing: Calculator,
   counting: ClipboardCheck,
@@ -192,6 +195,7 @@ export const ICONS = {
   trendDown: TrendingDown,
   trendUp: TrendingUp,
   user: User,
+  signOut: LogOut,
   warehouse: Warehouse,
 
   // Import and clipboard
@@ -282,9 +286,10 @@ export const ICON_CATALOG: readonly IconCatalogItem[] = [
   { name: "tune", category: "data", label: "Тохируулах" },
   { name: "paste", category: "data", label: "Paste хийх" },
 
-  { name: "ai", category: "module", label: "AI туслах" },
+  { name: "ai", category: "module", label: "AI холболт" },
   { name: "bank", category: "module", label: "Банк" },
   { name: "cash", category: "module", label: "Мөнгөн хөрөнгө" },
+  { name: "chat", category: "module", label: "Чат" },
   { name: "company", category: "module", label: "Компани" },
   { name: "costing", category: "module", label: "Өртөг" },
   { name: "counting", category: "module", label: "Тооллого" },
@@ -317,6 +322,7 @@ export const ICON_CATALOG: readonly IconCatalogItem[] = [
   { name: "trendDown", category: "module", label: "Бууралт" },
   { name: "trendUp", category: "module", label: "Өсөлт" },
   { name: "user", category: "module", label: "Хэрэглэгч" },
+  { name: "signOut", category: "action", label: "Гарах" },
   { name: "warehouse", category: "module", label: "Агуулах" },
 
   { name: "darkMode", category: "theme", label: "Харанхуй горим" },
