@@ -18,7 +18,7 @@ import {
   type SaasTrialContact,
 } from "@/lib/saas-emails";
 import { Field, Notice } from "./forms";
-import { askConfirm } from "./confirm-dialog";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 const newKey = () => `console-${crypto.randomUUID()}`;
 /** Модулийн түвшинд — grid-ийн rowSelection тогтвортой үлдэнэ (render бүрд шинэ функц биш). */
