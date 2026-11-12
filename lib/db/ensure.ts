@@ -76,6 +76,9 @@ export function ensureSchema(): Promise<void> {
         `alter table "customers" add column if not exists "upstream_access" boolean not null default false`,
         `alter table "customers" add column if not exists "upstream_key_id" integer`,
         `alter table "customers" add column if not exists "sync_push_key_id" integer`,
+        // Эх кодтой хувилбарын туршилтын хугацаа (v2.6, lib/trial.ts)
+        `alter table "customers" add column if not exists "trial_ends_at" timestamptz`,
+        `alter table "customers" add column if not exists "trial_alerted_at" timestamptz`,
         `create table if not exists "console_state" ("key" text primary key, "value" jsonb not null, "updated_at" timestamptz not null default now())`,
         // Авто sync нь ШИНЭ харилцагчид асаалттай (v2.5). Зөвхөн DEFAULT-ыг
         // солино — байгаа мөрүүдийн сонголтыг ХӨНДӨХГҮЙ (админ ухамсартай

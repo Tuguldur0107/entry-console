@@ -11,11 +11,12 @@ import { ensureSchema } from "./db/ensure";
 import { customers, type Customer } from "./db/schema";
 import { getCustomerRepo } from "./github";
 import { notify } from "./notify";
+import { composeSignupNote, trialEndsAtFor, type SignupScreening } from "./trial";
 import { assertSlugFree, dispatchProvision, normalizeProvisionInput, ProvisionError, SLUG_RE, type ProvisionInput } from "./provision";
 
 export class SignupError extends Error {}
 
-export interface SignupInput {
+export interface SignupInput extends SignupScreening {
   /** Компанийн нэр */
   companyName: string;
   registerNo?: string;
@@ -78,7 +79,7 @@ export async function submitSignup(input: SignupInput, ip = "?"): Promise<Custom
   const email = (input.email ?? "").trim().toLowerCase();
   const phone = (input.phone ?? "").trim();
   const registerNo = (input.registerNo ?? "").trim();
-  const note = (input.note ?? "").trim().slice(0, 2000);
+  const note = composeSignupNote(input.note, input);
   const wanted = (input.slug ?? "").trim().toLowerCase();
 
   if (companyName.length < 2 || companyName.length > 120) throw new SignupError("Компанийн нэр 2–120 тэмдэгт");
@@ -132,6 +133,8 @@ export interface ApproveInput {
   monthlyFee?: string;
   autoDeploy?: boolean | string;
   note?: string;
+  /** Туршилтын хоног (нээлттэй хүсэлтэд анхдагч TRIAL_DAYS; 0 = туршилтгүй, гэрээтэй) */
+  trialDays?: number | string;
 }
 
 /** Хүсэлтийг батална: repo үүсгэх workflow dispatch → мөр `provisioning` (autoDeploy бол Railway дараа нь). */
@@ -148,6 +151,11 @@ export async function approveRequest(customer: Customer, input: ApproveInput = {
     autoDeploy: input.autoDeploy ?? customer.autoDeploy,
   } satisfies ProvisionInput);
   await assertSlugFree(p.slug, customer.id);
+  const trialDays = input.trialDays === undefined || input.trialDays === "" ? undefined : Number(input.trialDays);
+  if (trialDays !== undefined && (!Number.isInteger(trialDays) || trialDays < 0 || trialDays > 90))
+    throw new SignupError("Туршилтын хоног 0–90 бүхэл тоо");
+  const decidedAt = new Date();
+  const trialEndsAt = p.plan === "pilot" ? trialEndsAtFor(customer.source, decidedAt, trialDays) : null;
   await dispatchProvision(p);
   const [next] = await db
     .update(customers)
@@ -161,14 +169,16 @@ export async function approveRequest(customer: Customer, input: ApproveInput = {
       monthlyFee: p.monthlyFee,
       autoDeploy: p.autoDeploy,
       status: "provisioning",
-      decidedAt: new Date(),
+      decidedAt,
+      trialEndsAt,
+      trialAlertedAt: null,
       decisionNote: (input.note ?? "").trim() || null,
       deployError: null,
       updatedAt: new Date(),
     })
     .where(eq(customers.id, customer.id))
     .returning();
-  await logEvent(customer.id, "approved", `Хүсэлт батлагдав — repo үүсгэх ажил эхэллээ (core ${p.ref})${p.autoDeploy ? " · repo бэлэн болмогц Railway deploy" : ""}${p.slug !== customer.slug ? ` · код ${customer.slug} → ${p.slug}` : ""}`);
+  await logEvent(customer.id, "approved", `Хүсэлт батлагдав — repo үүсгэх ажил эхэллээ (core ${p.ref})${p.autoDeploy ? " · repo бэлэн болмогц Railway deploy" : ""}${p.slug !== customer.slug ? ` · код ${customer.slug} → ${p.slug}` : ""}${trialEndsAt ? ` · туршилт ${trialEndsAt.toISOString().slice(0, 10)} хүртэл` : ""}`);
   return next;
 }
 

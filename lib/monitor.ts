@@ -16,6 +16,8 @@ import { isVersionBehind } from "./sync-ref";
 import { consoleState, customers, type Customer } from "./db/schema";
 import { dispatchWorkflow, fetchHealth, getDefaultBranch, getLatestRelease, getPull, listOpenSyncPulls, listWorkflowRuns, mergePull } from "./github";
 import { notify } from "./notify";
+import { applyStatusTransition } from "./lifecycle";
+import { trialMonitorAction } from "./trial";
 import { runScheduledOntologyReport } from "./ontology-report-db";
 import { getBackupStatus, getCustomDomain, latestDeployment, railwayConfigured, setBackupSchedule, DEFAULT_BACKUP_KINDS, upsertVariables } from "./railway";
 
@@ -202,6 +204,28 @@ export async function runMonitor(): Promise<MonitorSummary> {
       // байв. Тэмдэглэл нь зөвхөн авто sync-ийн одоогийн байдлыг илэрхийлдэг
       // тул энд цэвэрлэнэ (блок дахин ажиллавал шинээр бичигдэнэ).
       patch.syncNote = null;
+    }
+
+    // 4. Туршилтын хугацаа (lib/trial.ts): нэг удаа мэдэгдэнэ; TRIAL_AUTO_SUSPEND=1 бол
+    // «Түр зогсоох» (volume/өгөгдөл хэвээр). Бүрэн устгал ХЭЗЭЭ Ч автомат биш.
+    const trial = trialMonitorAction(c, now, process.env.TRIAL_AUTO_SUSPEND === "1");
+    if (trial.alert || trial.suspend) {
+      let suspended = false;
+      if (trial.suspend) {
+        try {
+          await applyStatusTransition(c, "suspended");
+          patch.status = "suspended";
+          suspended = true;
+        } catch (error) {
+          summary.errors.push(`${c.slug} туршилт зогсоох: ${msg(error)}`);
+        }
+      }
+      if (trial.alert || suspended) {
+        patch.trialAlertedAt = now;
+        const text = suspended ? "Туршилт дууссан — автоматаар түр зогсоов (өгөгдөл хэвээр)" : "Туршилт дууссан — багц оноох эсвэл «Түр зогсоох»";
+        alerts.push(`⏳ ${label} — ${text}`);
+        await logEvent(c.id, "status", text);
+      }
     }
 
     if (Object.keys(patch).length > 0)

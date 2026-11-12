@@ -126,6 +126,9 @@ export async function submitSignupRequest(_prev: ActionResult | null, formData: 
         phone: text(formData, "phone"),
         slug: text(formData, "slug"),
         note: text(formData, "note"),
+        employees: text(formData, "employees"),
+        developer: text(formData, "developer"),
+        goal: text(formData, "goal"),
         website: text(formData, "website"),
       },
       ip
@@ -152,6 +155,7 @@ export async function approveRequestAction(slug: string, _prev: ActionResult | n
       monthlyFee: text(formData, "monthly_fee") || undefined,
       autoDeploy: text(formData, "auto_deploy"),
       note: text(formData, "note"),
+      trialDays: text(formData, "trial_days"),
     });
     next = approved.slug;
   } catch (error) {

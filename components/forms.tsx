@@ -35,6 +35,7 @@ import {
 } from "@/lib/actions";
 import { isRequestStatus, type Customer, type CustomerStatus } from "@/lib/db/schema";
 import { WEEKDAY_LABELS, type OntologyReportSettings } from "@/lib/ontology-report";
+import { TRIAL_DAYS } from "@/lib/trial";
 import { PLAN_LABELS, STATUS_LABELS } from "./ui";
 import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Notice } from "@/components/ui/notice";
@@ -467,6 +468,11 @@ export function ApproveForm({ customer, latestTag, owner, railwayOn }: { custome
           </select>
         </Field>
         <Field label="Сарын төлбөр (₮)"><input name="monthly_fee" className="input" inputMode="decimal" defaultValue={customer.monthlyFee} /></Field>
+        {customer.source === "signup" && (
+          <Field label="Туршилт (хоног)" hint="Зөвхөн Pilot багцад · 0 = туршилтгүй">
+            <input name="trial_days" className="input mono" inputMode="numeric" defaultValue={TRIAL_DAYS} />
+          </Field>
+        )}
         <Field label="Эхлүүлэх core хувилбар" hint="Release tag эсвэл main"><input name="ref" className="input mono" defaultValue={latestTag ?? "main"} /></Field>
         <Field label="GitHub хэрэглэгчид (Write эрх)" hint="Таслалаар · заавал биш"><input name="github_users" className="input" placeholder="bat-erdene" /></Field>
         {railwayOn && (

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 
 import { submitSignupRequest } from "@/lib/actions";
+import { SIGNUP_DEVELOPER_OPTIONS, SIGNUP_EMPLOYEE_OPTIONS, TRIAL_DAYS } from "@/lib/trial";
 import { Notice } from "./forms";
 
 // Кирилл → латин (lib/signup.ts slugify-тай ижил — зөвхөн урьдчилан харуулахад)
@@ -52,6 +53,24 @@ export function SignupForm({ baseDomain }: { baseDomain: string | null }) {
           <label className="label" htmlFor="email">Имэйл *</label>
           <input id="email" name="email" className="input" type="email" required placeholder="bat@govi.mn" />
         </div>
+        <div>
+          <label className="label" htmlFor="employees">Ажилтны тоо</label>
+          <select id="employees" name="employees" className="select" defaultValue="">
+            <option value="">—</option>
+            {SIGNUP_EMPLOYEE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="developer">Өргөтгөлийг хэн хийх</label>
+          <select id="developer" name="developer" className="select" defaultValue="">
+            <option value="">—</option>
+            {SIGNUP_DEVELOPER_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="goal">Юуг өөрчлөх / нэмэх вэ</label>
+          <input id="goal" name="goal" className="input" maxLength={600} placeholder="Жишээ: үйлдвэрийн өртөг, өөрийн CRM-тэй холбох" />
+        </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="note">Тайлбар</label>
           <textarea id="note" name="note" className="textarea" rows={3} maxLength={2000} placeholder="Үйл ажиллагааны чиглэл, ажилтны тоо, одоо ямар программ ашигладаг…" />
@@ -59,7 +78,7 @@ export function SignupForm({ baseDomain }: { baseDomain: string | null }) {
       </div>
       <Notice result={result} />
       <button className="btn btn-primary w-full" type="submit" disabled={pending || !slugOk}>{pending ? "Илгээж байна…" : "Хүсэлт илгээх"}</button>
-      <p className="text-center text-xs text-text-3">Хүсэлтийг бид гараар баталгаажуулж, таны системийг бэлдээд имэйл/утсаар холбогдоно.</p>
+      <p className="text-center text-xs text-text-3">Хүсэлтийг бид гараар баталгаажуулна. Туршилт {TRIAL_DAYS} хоног.</p>
     </form>
   );
 }
