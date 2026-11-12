@@ -104,6 +104,10 @@ export const customers = pgTable("customers", {
   /** Хүсэлтийг батлах/татгалзах шийдвэрийн цаг, тайлбар */
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   decisionNote: text("decision_note"),
+  /** Туршилтын төгсгөл (нээлттэй /signup-аас батлагдсан, pilot багц) — lib/trial.ts */
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  /** Туршилт дууссан мэдэгдэл явсан цаг (нэг удаа) */
+  trialAlertedAt: timestamp("trial_alerted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

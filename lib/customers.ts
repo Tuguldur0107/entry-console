@@ -2,6 +2,7 @@
 // sync run) + харилцагчийн app-ийн /api/health.
 import { desc, eq } from "drizzle-orm";
 
+import { trialState, TRIAL_SOON_DAYS } from "./trial";
 import { config } from "./config";
 import { db } from "./db";
 import { ensureSchema } from "./db/ensure";
@@ -250,6 +251,13 @@ export function computeAttention(
       continue;
     }
     if (c.status === "rejected") continue;
+    const trial = trialState(c, new Date());
+    if (trial.kind === "running" && trial.daysLeft <= TRIAL_SOON_DAYS)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `Туршилт ${trial.daysLeft} хоногт дуусна — гэрээ (багц) оноох эсвэл зогсоох` });
+    else if (trial.kind === "expired" && c.status === "active")
+      out.push({ tone: "warning", slug: c.slug, title: c.displayName, detail: `Туршилт ${trial.daysAgo === 0 ? "өнөөдөр" : `${trial.daysAgo} хоногийн өмнө`} дууссан — багц оноох эсвэл «Түр зогсоох»` });
+    else if (trial.kind === "expired" && c.status === "suspended" && trial.deleteDue)
+      out.push({ tone: "info", slug: c.slug, title: c.displayName, detail: `Туршилт дууссанаас ${trial.daysAgo} хоног — устгах эсэхийг шийдэх («Аюултай бүс»)` });
     if (repoListOk && c.status === "provisioning" && Date.now() - c.createdAt.getTime() > 10 * 60 * 1000 && !repo)
       out.push({ tone: "danger", slug: c.slug, title: c.displayName, detail: "Repo 10+ минут үүсээгүй — core-ийн PROVISION_TOKEN, workflow run-ыг шалга" });
     if (repoListOk && repo && !repo.pushedAt)

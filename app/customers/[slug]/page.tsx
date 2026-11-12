@@ -202,6 +202,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
             <dl className="space-y-2 text-sm">
               <Row k="Сарын төлбөр" v={Number(c.monthlyFee) > 0 ? `${fmtMnt(c.monthlyFee)}` : "—"} />
               <Row k="Төлбөр эхлэх" v={c.billingStartsAt ?? "—"} />
+              {c.trialEndsAt && <Row k="Туршилт дуусах" v={fmtDate(c.trialEndsAt, false)} />}
               <Row k="ТТД" v={c.registerNo ?? "—"} />
               <Row k="Холбоо барих" v={[c.contactName, c.contactPhone, c.contactEmail].filter(Boolean).join(" · ") || "—"} />
               <Row k="Deploy" v={c.appUrl ? <a href={c.appUrl} target="_blank" rel="noreferrer" className="hover:underline">{c.appUrl.replace(/^https?:\/\//, "")}</a> : "—"} />
